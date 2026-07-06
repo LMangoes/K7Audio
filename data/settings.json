@@ -3,7 +3,7 @@
     "E:\\Music\\Files"
   ],
   "volume": 1,
-  "shuffle": true,
+  "shuffle": false,
   "repeat": "off",
   "allSongsSort": "artist-album"
 }
