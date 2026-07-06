@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'self' file: data:; script-src 'self'; style-src 'self' 'unsafe-inline';" />
+<title>K7 Audio</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<div id="app">
+
+  <header class="titlebar">
+    <span class="brand">K7<span class="brand-accent">/</span>AUDIO</span>
+    <span class="brand-sub">LOCAL LIBRARY PLAYER</span>
+  </header>
+
+  <div class="layout">
+
+    <nav class="sidebar">
+      <button class="nav-item active" data-view="all">ALL TRACKS</button>
+      <button class="nav-item" data-view="artists">ARTISTS / ALBUMS</button>
+
+      <div class="sidebar-section">
+        <div class="sidebar-label">
+          <span>PLAYLISTS</span>
+          <button id="new-playlist-btn" class="mini-btn" title="New playlist">+</button>
+        </div>
+        <div id="playlist-list" class="playlist-list"></div>
+      </div>
+
+      <div class="sidebar-footer">
+        <div class="sidebar-label"><span>LIBRARY FOLDERS</span></div>
+        <div id="library-paths" class="library-paths"></div>
+        <div class="folder-actions">
+          <button id="add-folder-btn" class="mini-btn wide">+ ADD FOLDER</button>
+          <button id="rescan-btn" class="mini-btn wide">RESCAN</button>
+        </div>
+        <div id="scan-status" class="scan-status"></div>
+      </div>
+    </nav>
+
+    <main class="content">
+      <div class="content-header">
+        <h2 id="view-title">ALL TRACKS</h2>
+        <div class="content-tools">
+          <input id="search-input" class="search-input" type="text" placeholder="FILTER TRACKS..." />
+          <select id="sort-select" class="sort-select">
+            <option value="artist-album">SORT: ARTIST / ALBUM</option>
+            <option value="title">SORT: TITLE A-Z</option>
+          </select>
+        </div>
+      </div>
+      <div id="view-root" class="view-root"></div>
+    </main>
+
+  </div>
+
+  <footer class="transport">
+    <div class="reels" id="reels">
+      <div class="reel" id="reel-l"><div class="reel-hub"></div></div>
+      <div class="reel" id="reel-r"><div class="reel-hub"></div></div>
+    </div>
+
+    <div class="now-playing">
+      <div class="marquee-wrap">
+        <div class="marquee" id="now-title">NO TRACK LOADED</div>
+      </div>
+      <div class="now-artist" id="now-artist">—</div>
+    </div>
+
+    <div class="transport-center">
+      <div class="transport-controls">
+        <button id="btn-shuffle" class="ctrl" title="Shuffle">SHF</button>
+        <button id="btn-prev" class="ctrl" title="Previous">◄◄</button>
+        <button id="btn-playpause" class="ctrl primary" title="Play/Pause">►</button>
+        <button id="btn-next" class="ctrl" title="Next">►►</button>
+        <button id="btn-repeat" class="ctrl" title="Repeat">RPT</button>
+      </div>
+      <div class="seek-wrap">
+        <span id="time-current" class="time">00:00</span>
+        <div class="seek-led" id="seek-led">
+          <div class="seek-led-fill" id="seek-led-fill"></div>
+          <input type="range" id="seek-range" class="seek-range" min="0" max="1000" value="0" />
+        </div>
+        <span id="time-total" class="time">00:00</span>
+      </div>
+    </div>
+
+    <div class="volume-wrap">
+      <span class="vol-icon">VOL</span>
+      <input type="range" id="volume-range" min="0" max="100" value="80" />
+    </div>
+  </footer>
+
+  <div id="modal-root"></div>
+</div>
+
+<audio id="audio-el" preload="metadata"></audio>
+
+<script src="player.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,9 @@
+{
+  "libraryPaths": [
+    "E:\\Music\\Files"
+  ],
+  "volume": 1,
+  "shuffle": true,
+  "repeat": "all",
+  "allSongsSort": "artist-album"
+}
