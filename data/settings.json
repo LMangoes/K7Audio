@@ -4,6 +4,6 @@
   ],
   "volume": 1,
   "shuffle": true,
-  "repeat": "all",
+  "repeat": "off",
   "allSongsSort": "artist-album"
 }
