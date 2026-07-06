@@ -51,6 +51,36 @@
     return hay.includes(q.toLowerCase());
   }
 
+  const PLACEHOLDER_COVER_SVG = `<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+    <rect width="100" height="100" rx="14" fill="#111318"/>
+    <circle cx="34" cy="46" r="14" fill="none" stroke="#3dff8f" stroke-width="4"/>
+    <circle cx="66" cy="46" r="14" fill="none" stroke="#ff2fb0" stroke-width="4"/>
+    <circle cx="34" cy="46" r="5" fill="#3dff8f"/>
+    <circle cx="66" cy="46" r="5" fill="#ff2fb0"/>
+    <rect x="14" y="72" width="72" height="6" rx="3" fill="#ff2fb0"/>
+  </svg>`;
+
+  /** Cover priority: explicit playlist cover -> first track's folder art -> generic placeholder. */
+  function makeCoverEl(coverUrl, sizeClass) {
+    const wrap = document.createElement('div');
+    wrap.className = `cover-thumb ${sizeClass}`;
+    if (coverUrl) {
+      const img = document.createElement('img');
+      img.src = coverUrl;
+      img.alt = '';
+      wrap.appendChild(img);
+    } else {
+      wrap.innerHTML = PLACEHOLDER_COVER_SVG;
+    }
+    return wrap;
+  }
+
+  function resolvePlaylistCover(pl) {
+    if (pl.coverUrl) return pl.coverUrl;
+    const firstTrack = pl.trackIds.map((id) => state.tracksById.get(id)).find((t) => t?.coverUrl);
+    return firstTrack ? firstTrack.coverUrl : null;
+  }
+
   // ---------- Data loading ----------
 
   async function loadAll() {
@@ -140,7 +170,9 @@
       item.className = 'playlist-item';
       if (state.view.type === 'playlist' && state.view.id === pl.id) item.classList.add('active');
 
+      const cover = makeCoverEl(resolvePlaylistCover(pl), 'cover-xs');
       const label = document.createElement('span');
+      label.className = 'playlist-item-label';
       label.textContent = pl.name;
       const count = document.createElement('span');
       count.className = 'count';
@@ -160,7 +192,7 @@
         updateNavActive();
       });
 
-      item.append(label, count, del);
+      item.append(cover, label, count, del);
       item.addEventListener('click', () => {
         state.view = { type: 'playlist', id: pl.id };
         updateNavActive();
@@ -186,6 +218,15 @@
     row.className = 'track-row';
     row.dataset.trackId = track.id;
     if (player.currentTrack()?.id === track.id) row.classList.add('playing');
+
+    const coverCell = document.createElement('div');
+    coverCell.className = 'cover-row';
+    if (track.coverUrl) {
+      const img = document.createElement('img');
+      img.src = track.coverUrl;
+      img.alt = '';
+      coverCell.appendChild(img);
+    }
 
     const idxCell = document.createElement('span');
     idxCell.className = 'idx';
@@ -222,7 +263,7 @@
       openAddToPlaylistModal(track.id);
     });
 
-    row.append(idxCell, titleCell, artistCell, albumCell, durCell, addBtn);
+    row.append(coverCell, idxCell, titleCell, artistCell, albumCell, durCell, addBtn);
     row.addEventListener('click', () => {
       player.setQueue(queueList, idx);
     });
@@ -232,7 +273,7 @@
   function makeListHeader() {
     const header = document.createElement('div');
     header.className = 'list-header';
-    header.innerHTML = '<span>#</span><span>TITLE</span><span>ARTIST</span><span>ALBUM</span><span></span><span></span>';
+    header.innerHTML = '<span></span><span>#</span><span>TITLE</span><span>ARTIST</span><span>ALBUM</span><span></span><span></span>';
     return header;
   }
 
@@ -257,10 +298,37 @@
       const pl = state.playlists.find((p) => p.id === state.view.id);
       if (!pl) { state.view = { type: 'all' }; renderCurrentView(); return; }
       el.viewTitle.textContent = pl.name.toUpperCase();
+      el.viewRoot.appendChild(makePlaylistCoverHeader(pl));
       const tracks = pl.trackIds.map((id) => state.tracksById.get(id)).filter(Boolean);
       renderFlatList(tracks.filter((t) => matchesSearch(t, state.search)), pl);
       return;
     }
+  }
+
+  function makePlaylistCoverHeader(pl) {
+    const header = document.createElement('div');
+    header.className = 'playlist-cover-header';
+    header.appendChild(makeCoverEl(resolvePlaylistCover(pl), 'cover-lg'));
+
+    const meta = document.createElement('div');
+    meta.className = 'playlist-cover-meta';
+    const count = document.createElement('div');
+    count.className = 'playlist-cover-count';
+    count.textContent = `${pl.trackIds.length} TRACK${pl.trackIds.length === 1 ? '' : 'S'}`;
+    const changeBtn = document.createElement('button');
+    changeBtn.className = 'mini-btn';
+    changeBtn.textContent = pl.coverUrl ? 'CHANGE COVER' : 'SET COVER';
+    changeBtn.addEventListener('click', async () => {
+      const updated = await window.k7.setPlaylistCover(pl.id);
+      if (!updated) return; // dialog cancelled
+      const idx = state.playlists.findIndex((p) => p.id === pl.id);
+      if (idx !== -1) state.playlists[idx] = updated;
+      renderPlaylistSidebar();
+      renderCurrentView();
+    });
+    meta.append(count, changeBtn);
+    header.appendChild(meta);
+    return header;
   }
 
   function renderFlatList(tracks, playlistContext) {

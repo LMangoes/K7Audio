@@ -19,4 +19,5 @@ contextBridge.exposeInMainWorld('k7', {
   addTracksToPlaylist: (id, trackIds) => ipcRenderer.invoke('playlists:addTracks', { id, trackIds }),
   removeTrackFromPlaylist: (id, trackId) => ipcRenderer.invoke('playlists:removeTrack', { id, trackId }),
   reorderPlaylist: (id, trackIds) => ipcRenderer.invoke('playlists:reorder', { id, trackIds }),
+  setPlaylistCover: (id) => ipcRenderer.invoke('playlists:set-cover', id),
 });

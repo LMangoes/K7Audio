@@ -15,7 +15,30 @@ const store = new Store(path.join(__dirname, 'data'));
 let cachedTracks = [];
 
 function withFileUrls(tracks) {
-  return tracks.map((t) => ({ ...t, fileUrl: pathToFileURL(t.filePath).href }));
+  return tracks.map((t) => ({
+    ...t,
+    fileUrl: pathToFileURL(t.filePath).href,
+    coverUrl: t.coverPath ? pathToFileURL(t.coverPath).href : null,
+  }));
+}
+
+function withCoverUrls(playlists) {
+  return playlists.map((p) => ({ ...p, coverUrl: p.coverPath ? pathToFileURL(p.coverPath).href : null }));
+}
+
+const COVERS_DIR = path.join(__dirname, 'data', 'covers');
+
+function saveCoverForPlaylist(playlistId, sourcePath) {
+  fs.mkdirSync(COVERS_DIR, { recursive: true });
+  // Remove any previously saved cover for this playlist under a different
+  // extension before writing the new one, so switching JPG->PNG etc. doesn't
+  // leave an orphaned file behind.
+  for (const existing of fs.readdirSync(COVERS_DIR)) {
+    if (path.parse(existing).name === playlistId) fs.unlinkSync(path.join(COVERS_DIR, existing));
+  }
+  const dest = path.join(COVERS_DIR, `${playlistId}${path.extname(sourcePath).toLowerCase()}`);
+  fs.copyFileSync(sourcePath, dest);
+  return dest;
 }
 
 function guessDefaultLibraryPath() {
@@ -97,10 +120,22 @@ ipcMain.handle('settings:save', async (_evt, patch) => store.saveSettings(patch)
 
 // --- IPC: playlists ---
 
-ipcMain.handle('playlists:get', async () => store.getPlaylists());
-ipcMain.handle('playlists:create', async (_evt, name) => store.createPlaylist(name));
+ipcMain.handle('playlists:get', async () => withCoverUrls(store.getPlaylists()));
+ipcMain.handle('playlists:create', async (_evt, name) => withCoverUrls([store.createPlaylist(name)])[0]);
 ipcMain.handle('playlists:rename', async (_evt, { id, name }) => store.renamePlaylist(id, name));
 ipcMain.handle('playlists:delete', async (_evt, id) => store.deletePlaylist(id));
 ipcMain.handle('playlists:addTracks', async (_evt, { id, trackIds }) => store.addTracksToPlaylist(id, trackIds));
 ipcMain.handle('playlists:removeTrack', async (_evt, { id, trackId }) => store.removeTrackFromPlaylist(id, trackId));
 ipcMain.handle('playlists:reorder', async (_evt, { id, trackIds }) => store.reorderPlaylist(id, trackIds));
+
+ipcMain.handle('playlists:set-cover', async (_evt, id) => {
+  const win = BrowserWindow.getFocusedWindow();
+  const result = await dialog.showOpenDialog(win, {
+    properties: ['openFile'],
+    filters: [{ name: 'Images', extensions: ['jpg', 'jpeg', 'png', 'webp'] }],
+  });
+  if (result.canceled || result.filePaths.length === 0) return null;
+  const dest = saveCoverForPlaylist(id, result.filePaths[0]);
+  const updated = store.setPlaylistCover(id, dest);
+  return withCoverUrls([updated])[0];
+});

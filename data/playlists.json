@@ -1,1 +1,14 @@
-[]
+[
+  {
+    "id": "9499af70-4043-4f84-bf64-0c909b12c9ee",
+    "name": "01",
+    "trackIds": [
+      "26a323c5fc8ea3fa",
+      "3a21070a1675f571",
+      "1a9a02aa73f57621",
+      "83f3fa743989265a"
+    ],
+    "coverPath": "E:\\Music\\K7Audio\\data\\covers\\9499af70-4043-4f84-bf64-0c909b12c9ee.jpg",
+    "createdAt": 1783338620196
+  }
+]
