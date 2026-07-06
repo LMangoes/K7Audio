@@ -14,6 +14,10 @@ class K7Player {
     this.repeat = 'off';   // off | all | one
     this.shuffleOn = false;
 
+    this.audioContext = null;
+    this.analyser = null;
+    this.freqData = null;
+
     this.onTrackChange = null;  // (track) => void
     this.onPlayStateChange = null; // (isPlaying) => void
     this.onTimeUpdate = null; // (currentTime, duration) => void
@@ -107,8 +111,36 @@ class K7Player {
     return this.queue[this.order[this.position]];
   }
 
+  // createMediaElementSource can only be called once per <audio> element for
+  // its entire lifetime — calling it twice throws. Since this element is
+  // reused across tracks (only .src changes), this must run exactly once,
+  // guarded by the audioContext null-check, on the first user-gesture play().
+  _ensureAudioGraph() {
+    if (this.audioContext) return;
+    this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    const source = this.audioContext.createMediaElementSource(this.audio);
+    this.analyser = this.audioContext.createAnalyser();
+    this.analyser.fftSize = 64;
+    this.analyser.smoothingTimeConstant = 0.75;
+    // Analyser must forward to destination itself — createMediaElementSource
+    // detaches the element from its default output, so skipping this line
+    // silences all playback, not just the visualizer.
+    source.connect(this.analyser);
+    this.analyser.connect(this.audioContext.destination);
+    this.freqData = new Uint8Array(this.analyser.frequencyBinCount);
+  }
+
+  /** Returns a live Uint8Array (0-255 per bin) or null if playback hasn't started yet. */
+  getFrequencyData() {
+    if (!this.analyser) return null;
+    this.analyser.getByteFrequencyData(this.freqData);
+    return this.freqData;
+  }
+
   play() {
     if (!this.audio.src) return;
+    this._ensureAudioGraph();
+    if (this.audioContext.state === 'suspended') this.audioContext.resume();
     this.audio.play().catch(() => {
       // Autoplay/decode rejection: surface as a stopped state rather than
       // throwing into an unhandled promise rejection.

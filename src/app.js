@@ -36,6 +36,7 @@
 
   const audioEl = document.getElementById('audio-el');
   const player = new K7Player(audioEl);
+  new K7Visualizer(document.getElementById('visualizer-canvas'), player);
   let seekDragging = false;
 
   function fmtTime(sec) {
