@@ -19,6 +19,7 @@
     <nav class="sidebar">
       <button class="nav-item active" data-view="all">ALL TRACKS</button>
       <button class="nav-item" data-view="artists">ARTISTS / ALBUMS</button>
+      <button class="nav-item" data-view="genres">GENRES</button>
 
       <div class="sidebar-section">
         <div class="sidebar-label">
@@ -43,10 +44,14 @@
       <div class="content-header">
         <h2 id="view-title">ALL TRACKS</h2>
         <div class="content-tools">
-          <input id="search-input" class="search-input" type="text" placeholder="FILTER TRACKS..." />
+          <div class="search-wrap">
+            <input id="search-input" class="search-input" type="text" placeholder="FILTER TRACKS / GENRE..." />
+            <button id="search-clear" class="search-clear" title="Clear filter" aria-label="Clear filter">×</button>
+          </div>
           <select id="sort-select" class="sort-select">
             <option value="artist-album">SORT: ARTIST / ALBUM</option>
             <option value="title">SORT: TITLE A-Z</option>
+            <option value="genre">SORT: GENRE</option>
           </select>
         </div>
       </div>

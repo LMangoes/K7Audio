@@ -15,6 +15,7 @@
     viewTitle: document.getElementById('view-title'),
     viewRoot: document.getElementById('view-root'),
     searchInput: document.getElementById('search-input'),
+    searchClear: document.getElementById('search-clear'),
     sortSelect: document.getElementById('sort-select'),
     playlistList: document.getElementById('playlist-list'),
     libraryPaths: document.getElementById('library-paths'),
@@ -48,7 +49,7 @@
 
   function matchesSearch(track, q) {
     if (!q) return true;
-    const hay = `${track.title} ${track.artist} ${track.album}`.toLowerCase();
+    const hay = `${track.title} ${track.artist} ${track.album} ${track.genre || ''}`.toLowerCase();
     return hay.includes(q.toLowerCase());
   }
 
@@ -206,9 +207,7 @@
 
   function updateNavActive() {
     document.querySelectorAll('.nav-item').forEach((btn) => {
-      const isAll = btn.dataset.view === 'all' && state.view.type === 'all';
-      const isArtists = btn.dataset.view === 'artists' && state.view.type === 'artists';
-      btn.classList.toggle('active', isAll || isArtists);
+      btn.classList.toggle('active', btn.dataset.view === state.view.type);
     });
   }
 
@@ -311,6 +310,12 @@
       return;
     }
 
+    if (state.view.type === 'genres') {
+      el.viewTitle.textContent = 'GENRES';
+      renderGenreTree();
+      return;
+    }
+
     if (state.view.type === 'playlist') {
       const pl = state.playlists.find((p) => p.id === state.view.id);
       if (!pl) { state.view = { type: 'all' }; renderCurrentView(); return; }
@@ -398,6 +403,29 @@
         artistNode.appendChild(albumNode);
       }
       el.viewRoot.appendChild(artistNode);
+    }
+  }
+
+  async function renderGenreTree() {
+    const index = await window.k7.getGenreIndex();
+
+    if (index.length === 0) {
+      el.viewRoot.innerHTML = '<div class="empty-state">NO TRACKS INDEXED YET.</div>';
+      return;
+    }
+
+    for (const genreEntry of index) {
+      const visibleTracks = genreEntry.tracks.filter((t) => matchesSearch(t, state.search));
+      if (visibleTracks.length === 0) continue;
+
+      const genreNode = document.createElement('details');
+      genreNode.className = 'genre-node';
+      const summary = document.createElement('summary');
+      const label = genreEntry.genre === 'UNTAGGED' ? 'NO GENRE TAG' : genreEntry.genre;
+      summary.textContent = `${label} (${genreEntry.tracks.length})`;
+      genreNode.appendChild(summary);
+      visibleTracks.forEach((t, i) => genreNode.appendChild(makeTrackRow(t, i, visibleTracks)));
+      el.viewRoot.appendChild(genreNode);
     }
   }
 
@@ -569,6 +597,15 @@
 
   el.searchInput.addEventListener('input', (e) => {
     state.search = e.target.value;
+    el.searchClear.classList.toggle('visible', state.search.length > 0);
+    renderCurrentView();
+  });
+
+  el.searchClear.addEventListener('click', () => {
+    state.search = '';
+    el.searchInput.value = '';
+    el.searchClear.classList.remove('visible');
+    el.searchInput.focus();
     renderCurrentView();
   });
 

@@ -8,6 +8,7 @@ contextBridge.exposeInMainWorld('k7', {
   removeLibraryFolder: (folderPath) => ipcRenderer.invoke('library:remove-folder', folderPath),
   sortAllSongs: (mode) => ipcRenderer.invoke('library:sort-all-songs', mode),
   getArtistIndex: () => ipcRenderer.invoke('library:artist-index'),
+  getGenreIndex: () => ipcRenderer.invoke('library:genre-index'),
 
   getSettings: () => ipcRenderer.invoke('settings:get'),
   saveSettings: (patch) => ipcRenderer.invoke('settings:save', patch),

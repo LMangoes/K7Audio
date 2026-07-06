@@ -4,7 +4,7 @@ const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { pathToFileURL } = require('url');
-const { scanLibrary, buildArtistAlbumIndex, sortAllSongs } = require('./lib/scanner');
+const { scanLibrary, buildArtistAlbumIndex, buildGenreIndex, sortAllSongs } = require('./lib/scanner');
 const { Store } = require('./lib/store');
 
 // Portable by design: settings/playlists live next to the app (this folder),
@@ -111,6 +111,10 @@ ipcMain.handle('library:sort-all-songs', async (_evt, mode) => {
 
 ipcMain.handle('library:artist-index', async () => {
   return buildArtistAlbumIndex(cachedTracks);
+});
+
+ipcMain.handle('library:genre-index', async () => {
+  return buildGenreIndex(cachedTracks);
 });
 
 // --- IPC: settings ---

@@ -195,7 +195,23 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   color: var(--text);
 }
 .content-tools { display: flex; gap: 8px; }
-.search-input { padding: 7px 10px; font-size: 11px; width: 200px; }
+.search-wrap { position: relative; display: inline-flex; align-items: center; }
+.search-input { padding: 7px 22px 7px 10px; font-size: 11px; width: 200px; }
+.search-clear {
+  position: absolute;
+  right: 3px;
+  top: 50%;
+  transform: translateY(-50%);
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 14px;
+  line-height: 1;
+  padding: 2px 5px;
+  display: none;
+}
+.search-clear:hover { border: none; color: var(--magenta); }
+.search-clear.visible { display: block; }
 .sort-select { padding: 7px 8px; font-size: 11px; }
 .view-root { flex: 1 1 auto; overflow-y: auto; border: 1px solid var(--border); background: var(--panel); }
 
@@ -252,8 +268,8 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 .empty-state .accent { color: var(--magenta); }
 
 /* ---------- Artist/Album tree ---------- */
-details.artist-node { border-bottom: 1px solid var(--border); }
-details.artist-node > summary {
+details.artist-node, details.genre-node { border-bottom: 1px solid var(--border); }
+details.artist-node > summary, details.genre-node > summary {
   padding: 10px 12px;
   cursor: pointer;
   font-size: 12px;
@@ -261,9 +277,9 @@ details.artist-node > summary {
   list-style: none;
   color: var(--text);
 }
-details.artist-node > summary::-webkit-details-marker { display: none; }
-details.artist-node > summary::before { content: '▸ '; color: var(--magenta); }
-details.artist-node[open] > summary::before { content: '▾ '; color: var(--green); }
+details.artist-node > summary::-webkit-details-marker, details.genre-node > summary::-webkit-details-marker { display: none; }
+details.artist-node > summary::before, details.genre-node > summary::before { content: '▸ '; color: var(--magenta); }
+details.artist-node[open] > summary::before, details.genre-node[open] > summary::before { content: '▾ '; color: var(--green); }
 details.album-node { margin-left: 20px; border-left: 1px dashed var(--border); }
 details.album-node > summary {
   padding: 7px 10px;
