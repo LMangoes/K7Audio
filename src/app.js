@@ -214,7 +214,7 @@
 
   // ---------- Track row ----------
 
-  function makeTrackRow(track, idx, queueList) {
+  function makeTrackRow(track, idx, queueList, playlistContext) {
     const row = document.createElement('div');
     row.className = 'track-row';
     row.dataset.trackId = track.id;
@@ -264,7 +264,23 @@
       openAddToPlaylistModal(track.id);
     });
 
-    row.append(coverCell, idxCell, titleCell, artistCell, albumCell, durCell, addBtn);
+    const removeCell = document.createElement('span');
+    if (playlistContext) {
+      const removeBtn = document.createElement('button');
+      removeBtn.className = 'row-remove-btn';
+      removeBtn.textContent = '−';
+      removeBtn.title = `Remove from ${playlistContext.name}`;
+      removeBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        await window.k7.removeTrackFromPlaylist(playlistContext.id, track.id);
+        state.playlists = await window.k7.getPlaylists();
+        renderPlaylistSidebar();
+        renderCurrentView();
+      });
+      removeCell.appendChild(removeBtn);
+    }
+
+    row.append(coverCell, idxCell, titleCell, artistCell, albumCell, durCell, addBtn, removeCell);
     row.addEventListener('click', () => {
       player.setQueue(queueList, idx);
     });
@@ -274,7 +290,7 @@
   function makeListHeader() {
     const header = document.createElement('div');
     header.className = 'list-header';
-    header.innerHTML = '<span></span><span>#</span><span>TITLE</span><span>ARTIST</span><span>ALBUM</span><span></span><span></span>';
+    header.innerHTML = '<span></span><span>#</span><span>TITLE</span><span>ARTIST</span><span>ALBUM</span><span></span><span></span><span></span>';
     return header;
   }
 
@@ -343,7 +359,7 @@
       return;
     }
     el.viewRoot.appendChild(makeListHeader());
-    tracks.forEach((t, i) => el.viewRoot.appendChild(makeTrackRow(t, i, tracks)));
+    tracks.forEach((t, i) => el.viewRoot.appendChild(makeTrackRow(t, i, tracks, playlistContext)));
   }
 
   async function renderArtistTree() {
@@ -438,24 +454,43 @@
       );
       return;
     }
+    renderAddToPlaylistModal(trackId);
+  }
+
+  function renderAddToPlaylistModal(trackId) {
     const items = state.playlists
-      .map((pl) => `<button data-id="${pl.id}">${pl.name} (${pl.trackIds.length})</button>`)
+      .map((pl) => {
+        const inPlaylist = pl.trackIds.includes(trackId);
+        return `<button data-id="${pl.id}" class="${inPlaylist ? 'in-playlist' : ''}">${inPlaylist ? '✓ ' : ''}${pl.name} (${pl.trackIds.length})</button>`;
+      })
       .join('');
-    openModal(
-      `<h3>ADD TO PLAYLIST</h3><div class="modal-list">${items}</div>
-       <div class="modal-actions"><button id="pl-close">CLOSE</button></div>`,
-      (box) => {
-        box.querySelectorAll('.modal-list button').forEach((btn) => {
-          btn.addEventListener('click', async () => {
-            await window.k7.addTracksToPlaylist(btn.dataset.id, [trackId]);
-            state.playlists = await window.k7.getPlaylists();
-            renderPlaylistSidebar();
-            closeModal();
-          });
-        });
-        box.querySelector('#pl-close').addEventListener('click', closeModal);
-      }
-    );
+    const html = `<h3>PLAYLISTS</h3><div class="modal-list">${items}</div>
+       <div class="modal-actions"><button id="pl-close">CLOSE</button></div>`;
+
+    const existingBox = el.modalRoot.querySelector('.modal-box');
+    if (existingBox) {
+      existingBox.innerHTML = html;
+      wireAddToPlaylistModal(existingBox, trackId);
+    } else {
+      openModal(html, (box) => wireAddToPlaylistModal(box, trackId));
+    }
+  }
+
+  function wireAddToPlaylistModal(box, trackId) {
+    box.querySelectorAll('.modal-list button').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const id = btn.dataset.id;
+        const pl = state.playlists.find((p) => p.id === id);
+        const alreadyIn = pl.trackIds.includes(trackId);
+        if (alreadyIn) await window.k7.removeTrackFromPlaylist(id, trackId);
+        else await window.k7.addTracksToPlaylist(id, [trackId]);
+        state.playlists = await window.k7.getPlaylists();
+        renderPlaylistSidebar();
+        if (state.view.type === 'playlist' && state.view.id === id) renderCurrentView();
+        renderAddToPlaylistModal(trackId);
+      });
+    });
+    box.querySelector('#pl-close').addEventListener('click', closeModal);
   }
 
   // ---------- Transport UI ----------
