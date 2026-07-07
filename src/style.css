@@ -143,6 +143,9 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 .playlist-item .count { color: var(--text-dim); font-size: 10px; }
 .playlist-item .del-btn { opacity: 0; font-size: 10px; padding: 1px 5px; }
 .playlist-item:hover .del-btn { opacity: 1; }
+.playlist-item .rename-btn { opacity: 0; font-size: 11px; padding: 1px 5px; }
+.playlist-item:hover .rename-btn { opacity: 1; }
+.playlist-item .rename-btn:hover { color: var(--green); border-color: var(--green-dim); }
 .playlist-item-label { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .cover-thumb { flex: 0 0 auto; overflow: hidden; background: var(--bg); border: 1px solid var(--border); }

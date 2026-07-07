@@ -53,6 +53,10 @@
     return hay.includes(q.toLowerCase());
   }
 
+  function escapeHtml(str) {
+    return str.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  }
+
   const PLACEHOLDER_COVER_SVG = `<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
     <rect width="100" height="100" rx="14" fill="#111318"/>
     <circle cx="34" cy="46" r="14" fill="none" stroke="#3dff8f" stroke-width="4"/>
@@ -188,19 +192,21 @@
         if (!confirm(`Delete playlist "${pl.name}"?`)) return;
         await window.k7.deletePlaylist(pl.id);
         state.playlists = await window.k7.getPlaylists();
-        if (state.view.type === 'playlist' && state.view.id === pl.id) state.view = { type: 'all' };
-        renderPlaylistSidebar();
-        renderCurrentView();
-        updateNavActive();
+        if (state.view.type === 'playlist' && state.view.id === pl.id) switchView({ type: 'all' });
+        else renderPlaylistSidebar();
       });
 
-      item.append(cover, label, count, del);
-      item.addEventListener('click', () => {
-        state.view = { type: 'playlist', id: pl.id };
-        updateNavActive();
-        renderPlaylistSidebar();
-        renderCurrentView();
+      const rename = document.createElement('button');
+      rename.className = 'rename-btn';
+      rename.textContent = '✎';
+      rename.title = 'Rename playlist';
+      rename.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openRenamePlaylistModal(pl);
       });
+
+      item.append(cover, label, count, rename, del);
+      item.addEventListener('click', () => switchView({ type: 'playlist', id: pl.id }));
       el.playlistList.appendChild(item);
     }
   }
@@ -209,6 +215,19 @@
     document.querySelectorAll('.nav-item').forEach((btn) => {
       btn.classList.toggle('active', btn.dataset.view === state.view.type);
     });
+  }
+
+  /** Single entry point for changing state.view: a stale search filter carried
+   * into a different browsing context is confusing, so every view change
+   * clears it, not just the ones explicitly triggered from the sidebar. */
+  function switchView(view) {
+    state.view = view;
+    state.search = '';
+    el.searchInput.value = '';
+    el.searchClear.classList.remove('visible');
+    updateNavActive();
+    renderPlaylistSidebar();
+    renderCurrentView();
   }
 
   // ---------- Track row ----------
@@ -281,7 +300,8 @@
 
     row.append(coverCell, idxCell, titleCell, artistCell, albumCell, durCell, addBtn, removeCell);
     row.addEventListener('click', () => {
-      player.setQueue(queueList, idx);
+      const queueIdx = queueList.findIndex((t) => t.id === track.id);
+      player.setQueue(queueList, queueIdx >= 0 ? queueIdx : idx);
     });
     return row;
   }
@@ -300,7 +320,7 @@
 
     if (state.view.type === 'all') {
       el.viewTitle.textContent = 'ALL TRACKS';
-      renderFlatList(state.allTracks.filter((t) => matchesSearch(t, state.search)));
+      renderFlatList(state.allTracks);
       return;
     }
 
@@ -318,11 +338,11 @@
 
     if (state.view.type === 'playlist') {
       const pl = state.playlists.find((p) => p.id === state.view.id);
-      if (!pl) { state.view = { type: 'all' }; renderCurrentView(); return; }
+      if (!pl) { state.view = { type: 'all' }; state.search = ''; el.searchInput.value = ''; el.searchClear.classList.remove('visible'); renderCurrentView(); return; }
       el.viewTitle.textContent = pl.name.toUpperCase();
       el.viewRoot.appendChild(makePlaylistCoverHeader(pl));
       const tracks = pl.trackIds.map((id) => state.tracksById.get(id)).filter(Boolean);
-      renderFlatList(tracks.filter((t) => matchesSearch(t, state.search)), pl);
+      renderFlatList(tracks, pl);
       return;
     }
   }
@@ -353,8 +373,9 @@
     return header;
   }
 
-  function renderFlatList(tracks, playlistContext) {
-    if (tracks.length === 0) {
+  function renderFlatList(fullTracks, playlistContext) {
+    const visible = fullTracks.filter((t) => matchesSearch(t, state.search));
+    if (visible.length === 0) {
       const empty = document.createElement('div');
       empty.className = 'empty-state';
       empty.innerHTML = state.allTracks.length === 0
@@ -364,7 +385,9 @@
       return;
     }
     el.viewRoot.appendChild(makeListHeader());
-    tracks.forEach((t, i) => el.viewRoot.appendChild(makeTrackRow(t, i, tracks, playlistContext)));
+    // queueList is the full, unfiltered list: an active search narrows what's
+    // shown, not what plays next — clicking a row queues the whole context.
+    visible.forEach((t, i) => el.viewRoot.appendChild(makeTrackRow(t, i, fullTracks, playlistContext)));
   }
 
   async function renderArtistTree() {
@@ -381,9 +404,9 @@
       const visibleAlbums = artistEntry.albums
         .map((al) => ({
           ...al,
-          tracks: al.tracks.filter((t) => artistMatches || matchesSearch(t, state.search) || al.album.toLowerCase().includes(q)),
+          visibleTracks: al.tracks.filter((t) => artistMatches || matchesSearch(t, state.search) || al.album.toLowerCase().includes(q)),
         }))
-        .filter((al) => artistMatches || al.tracks.length > 0);
+        .filter((al) => artistMatches || al.visibleTracks.length > 0);
 
       if (!artistMatches && visibleAlbums.length === 0) continue;
 
@@ -399,7 +422,9 @@
         const albumSummary = document.createElement('summary');
         albumSummary.textContent = `${album.album} (${album.tracks.length})`;
         albumNode.appendChild(albumSummary);
-        album.tracks.forEach((t, i) => albumNode.appendChild(makeTrackRow(t, i, album.tracks)));
+        // queueList is album.tracks (full), rendered rows are visibleTracks
+        // (filtered) — clicking a filtered row still queues the whole album.
+        album.visibleTracks.forEach((t, i) => albumNode.appendChild(makeTrackRow(t, i, album.tracks)));
         artistNode.appendChild(albumNode);
       }
       el.viewRoot.appendChild(artistNode);
@@ -424,7 +449,7 @@
       const label = genreEntry.genre === 'UNTAGGED' ? 'NO GENRE TAG' : genreEntry.genre;
       summary.textContent = `${label} (${genreEntry.tracks.length})`;
       genreNode.appendChild(summary);
-      visibleTracks.forEach((t, i) => genreNode.appendChild(makeTrackRow(t, i, visibleTracks)));
+      visibleTracks.forEach((t, i) => genreNode.appendChild(makeTrackRow(t, i, genreEntry.tracks)));
       el.viewRoot.appendChild(genreNode);
     }
   }
@@ -460,15 +485,39 @@
           if (!name) return;
           const pl = await window.k7.createPlaylist(name);
           state.playlists = await window.k7.getPlaylists();
-          renderPlaylistSidebar();
-          state.view = { type: 'playlist', id: pl.id };
-          updateNavActive();
-          renderPlaylistSidebar();
-          renderCurrentView();
+          switchView({ type: 'playlist', id: pl.id });
           closeModal();
         };
         box.querySelector('#pl-create').addEventListener('click', create);
         input.addEventListener('keydown', (e) => { if (e.key === 'Enter') create(); });
+      }
+    );
+  }
+
+  function openRenamePlaylistModal(pl) {
+    openModal(
+      `<h3>RENAME PLAYLIST</h3>
+       <input type="text" id="pl-rename-input" maxlength="60" value="${escapeHtml(pl.name)}" />
+       <div class="modal-actions">
+         <button id="pl-rename-cancel">CANCEL</button>
+         <button id="pl-rename-save">SAVE</button>
+       </div>`,
+      (box) => {
+        const input = box.querySelector('#pl-rename-input');
+        input.focus();
+        input.select();
+        box.querySelector('#pl-rename-cancel').addEventListener('click', closeModal);
+        const save = async () => {
+          const name = input.value.trim();
+          if (!name || name === pl.name) { closeModal(); return; }
+          await window.k7.renamePlaylist(pl.id, name);
+          state.playlists = await window.k7.getPlaylists();
+          renderPlaylistSidebar();
+          if (state.view.type === 'playlist' && state.view.id === pl.id) renderCurrentView();
+          closeModal();
+        };
+        box.querySelector('#pl-rename-save').addEventListener('click', save);
+        input.addEventListener('keydown', (e) => { if (e.key === 'Enter') save(); });
       }
     );
   }
@@ -489,7 +538,7 @@
     const items = state.playlists
       .map((pl) => {
         const inPlaylist = pl.trackIds.includes(trackId);
-        return `<button data-id="${pl.id}" class="${inPlaylist ? 'in-playlist' : ''}">${inPlaylist ? '✓ ' : ''}${pl.name} (${pl.trackIds.length})</button>`;
+        return `<button data-id="${pl.id}" class="${inPlaylist ? 'in-playlist' : ''}">${inPlaylist ? '✓ ' : ''}${escapeHtml(pl.name)} (${pl.trackIds.length})</button>`;
       })
       .join('');
     const html = `<h3>PLAYLISTS</h3><div class="modal-list">${items}</div>
@@ -572,12 +621,7 @@
   // ---------- Event wiring ----------
 
   document.querySelectorAll('.nav-item').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      state.view = { type: btn.dataset.view };
-      updateNavActive();
-      renderPlaylistSidebar();
-      renderCurrentView();
-    });
+    btn.addEventListener('click', () => switchView({ type: btn.dataset.view }));
   });
 
   document.getElementById('new-playlist-btn').addEventListener('click', openNewPlaylistModal);
