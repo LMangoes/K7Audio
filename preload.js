@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld('k7', {
   addLibraryFolder: () => ipcRenderer.invoke('library:add-folder'),
   removeLibraryFolder: (folderPath) => ipcRenderer.invoke('library:remove-folder', folderPath),
   sortAllSongs: (mode) => ipcRenderer.invoke('library:sort-all-songs', mode),
+  sortTracks: (trackIds, mode) => ipcRenderer.invoke('library:sort-tracks', { trackIds, mode }),
   getArtistIndex: () => ipcRenderer.invoke('library:artist-index'),
   getGenreIndex: () => ipcRenderer.invoke('library:genre-index'),
 

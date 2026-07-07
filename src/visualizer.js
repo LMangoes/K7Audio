@@ -38,33 +38,39 @@ class K7Visualizer {
 
     const gap = Math.max(1, w * 0.006);
     const barWidth = w / BAR_COUNT;
+    const half = BAR_COUNT / 2;
 
     const gradient = ctx.createLinearGradient(0, h, 0, 0);
     gradient.addColorStop(0, '#3dff8f');
     gradient.addColorStop(1, '#ff2fb0');
 
-    for (let i = 0; i < BAR_COUNT; i++) {
-      const target = data ? data[i] / 255 : 0;
-      const prev = this.levels[i];
-      // Fast attack, slower release: bars jump up on a beat, ease back down
-      // rather than dropping instantly, which reads as jittery.
-      this.levels[i] = target > prev ? prev + (target - prev) * 0.6 : prev + (target - prev) * 0.18;
+    for (let j = 0; j < half; j++) {
+      // Sample every other bin (0,2,4,...) so the half-count mirror still
+      // spans the full bass-to-treble range instead of only the lower half.
+      const target = data ? data[j * 2] / 255 : 0;
 
-      const barH = this.levels[i] * h;
-      this.peaks[i] = barH > this.peaks[i] ? barH : Math.max(0, this.peaks[i] - h * 0.03);
+      for (const slot of [half - 1 - j, half + j]) {
+        const prev = this.levels[slot];
+        // Fast attack, slower release: bars jump up on a beat, ease back down
+        // rather than dropping instantly, which reads as jittery.
+        this.levels[slot] = target > prev ? prev + (target - prev) * 0.6 : prev + (target - prev) * 0.18;
 
-      const x = i * barWidth + gap / 2;
-      const bw = Math.max(1, barWidth - gap);
+        const barH = this.levels[slot] * h;
+        this.peaks[slot] = barH > this.peaks[slot] ? barH : Math.max(0, this.peaks[slot] - h * 0.03);
 
-      ctx.fillStyle = gradient;
-      ctx.shadowColor = 'rgba(255,47,176,0.35)';
-      ctx.shadowBlur = h * 0.15;
-      ctx.fillRect(x, h - barH, bw, barH);
+        const x = slot * barWidth + gap / 2;
+        const bw = Math.max(1, barWidth - gap);
 
-      if (this.peaks[i] > 2) {
-        ctx.shadowBlur = 0;
-        ctx.fillStyle = '#e8fff0';
-        ctx.fillRect(x, Math.max(0, h - this.peaks[i] - 1.5), bw, 1.5);
+        ctx.fillStyle = gradient;
+        ctx.shadowColor = 'rgba(255,47,176,0.35)';
+        ctx.shadowBlur = h * 0.15;
+        ctx.fillRect(x, h - barH, bw, barH);
+
+        if (this.peaks[slot] > 2) {
+          ctx.shadowBlur = 0;
+          ctx.fillStyle = '#e8fff0';
+          ctx.fillRect(x, Math.max(0, h - this.peaks[slot] - 1.5), bw, 1.5);
+        }
       }
     }
 

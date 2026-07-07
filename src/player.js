@@ -106,6 +106,28 @@ class K7Player {
     if (autoplay) this.play();
   }
 
+  /**
+   * Restores a single track, paused, at a saved position — used on app
+   * launch to resume where the last session left off. Does not call play():
+   * "loaded and paused at the timestamp", not resumed playback. Seeking
+   * happens on 'loadedmetadata' since setting currentTime before the browser
+   * knows the track's duration is unreliable.
+   */
+  loadPaused(track, positionSec) {
+    this.queue = [track];
+    this.order = [0];
+    this.position = 0;
+    this.audio.src = track.fileUrl;
+    this.onTrackChange?.(track);
+    this._updateMediaSessionMetadata(track);
+    const target = Math.max(0, positionSec || 0);
+    const onLoaded = () => {
+      this.audio.currentTime = target;
+      this.audio.removeEventListener('loadedmetadata', onLoaded);
+    };
+    this.audio.addEventListener('loadedmetadata', onLoaded);
+  }
+
   currentTrack() {
     if (this.position < 0 || this.position >= this.order.length) return null;
     return this.queue[this.order[this.position]];

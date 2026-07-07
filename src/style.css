@@ -324,8 +324,10 @@ details.album-node > summary::before { content: '· '; }
 .now-playing { min-width: 0; overflow: hidden; }
 .marquee-wrap { overflow: hidden; white-space: nowrap; }
 .marquee { font-size: 13px; color: var(--green); letter-spacing: 0.03em; display: inline-block; white-space: nowrap; }
-.marquee.scrolling { animation-name: marquee-scroll; animation-timing-function: linear; animation-iteration-count: infinite; animation-direction: alternate; }
-@keyframes marquee-scroll { from { transform: translateX(0); } to { transform: translateX(var(--scroll-distance, -50px)); } }
+.marquee-copy { white-space: nowrap; }
+.marquee-gap { display: inline-block; width: var(--marquee-gap, 40px); }
+.marquee.scrolling { animation-name: marquee-scroll; animation-timing-function: linear; animation-iteration-count: infinite; }
+@keyframes marquee-scroll { from { transform: translateX(0); } to { transform: translateX(-50%); } }
 .now-artist { font-size: 11px; color: var(--text-dim); margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .transport-center { display: flex; flex-direction: column; gap: 8px; min-width: 0; }

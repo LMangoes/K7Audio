@@ -67,6 +67,7 @@ function createWindow() {
     minWidth: 900,
     minHeight: 600,
     backgroundColor: '#0a0a0c',
+    icon: path.join(__dirname, 'assets', 'k7-cassette.ico'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -107,6 +108,12 @@ ipcMain.handle('library:remove-folder', async (_evt, folderPath) => {
 
 ipcMain.handle('library:sort-all-songs', async (_evt, mode) => {
   return sortAllSongs(cachedTracks, mode);
+});
+
+ipcMain.handle('library:sort-tracks', async (_evt, { trackIds, mode }) => {
+  const byId = new Map(cachedTracks.map((t) => [t.id, t]));
+  const tracks = trackIds.map((id) => byId.get(id)).filter(Boolean);
+  return sortAllSongs(tracks, mode);
 });
 
 ipcMain.handle('library:artist-index', async () => {
