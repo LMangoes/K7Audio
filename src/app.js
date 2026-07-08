@@ -7,6 +7,7 @@
     playlists: [],
     settings: null,
     view: { type: 'all' }, // {type:'all'} | {type:'artists'} | {type:'playlist', id}
+    activeQueueView: null, // view that produced player's current queue — frozen at queue-set time, not re-read later
     search: '',
     sortMode: 'artist-album',
   };
@@ -23,6 +24,7 @@
     modalRoot: document.getElementById('modal-root'),
     nowTitle: document.getElementById('now-title'),
     nowArtist: document.getElementById('now-artist'),
+    nowSource: document.getElementById('now-source'),
     reels: document.getElementById('reels'),
     btnPlayPause: document.getElementById('btn-playpause'),
     btnShuffle: document.getElementById('btn-shuffle'),
@@ -108,7 +110,22 @@
     const last = state.settings.lastPlayback;
     if (last?.trackId) {
       const track = state.tracksById.get(last.trackId);
-      if (track) player.loadPaused(track, last.position || 0);
+      if (track) {
+        const view = last.view || { type: 'all' };
+        const tracks = await resolveViewTracks(view);
+        const idx = tracks.findIndex((t) => t.id === track.id);
+        if (idx >= 0) {
+          setActiveQueueView(view);
+          player.setQueue(tracks, idx, false);
+        } else {
+          // Saved context no longer contains this track (e.g. removed from
+          // the playlist since) — fall back to just the track itself rather
+          // than dropping the restore entirely.
+          setActiveQueueView({ type: 'all' });
+          player.setQueue([track], 0, false);
+        }
+        player.seekOnceLoaded(last.position || 0);
+      }
     }
   }
 
@@ -181,6 +198,7 @@
       const item = document.createElement('div');
       item.className = 'playlist-item';
       if (state.view.type === 'playlist' && state.view.id === pl.id) item.classList.add('active');
+      if (state.activeQueueView?.type === 'playlist' && state.activeQueueView.id === pl.id) item.classList.add('playing-from');
 
       const cover = makeCoverEl(resolvePlaylistCover(pl), 'cover-xs');
       const label = document.createElement('span');
@@ -307,6 +325,7 @@
     row.append(coverCell, idxCell, titleCell, artistCell, albumCell, durCell, addBtn, removeCell);
     row.addEventListener('click', () => {
       const queueIdx = queueList.findIndex((t) => t.id === track.id);
+      setActiveQueueView({ ...state.view });
       player.setQueue(queueList, queueIdx >= 0 ? queueIdx : idx);
     });
     return row;
@@ -378,7 +397,16 @@
       renderPlaylistSidebar();
       renderCurrentView();
     });
-    meta.append(count, changeBtn);
+
+    const renameBtn = document.createElement('button');
+    renameBtn.className = 'mini-btn';
+    renameBtn.textContent = 'RENAME';
+    renameBtn.addEventListener('click', () => openRenamePlaylistModal(pl));
+
+    const btnRow = document.createElement('div');
+    btnRow.className = 'playlist-cover-actions';
+    btnRow.append(changeBtn, renameBtn);
+    meta.append(count, btnRow);
     header.appendChild(meta);
     return header;
   }
@@ -611,7 +639,13 @@
   function persistPlaybackState() {
     const track = player.currentTrack();
     if (!track) return;
-    window.k7.saveSettings({ lastPlayback: { trackId: track.id, position: player.audio.currentTime || 0 } });
+    window.k7.saveSettings({
+      lastPlayback: {
+        trackId: track.id,
+        position: player.audio.currentTime || 0,
+        view: state.activeQueueView || { type: 'all' },
+      },
+    });
   }
 
   player.onTrackChange = (track) => {
@@ -683,27 +717,53 @@
     }
   });
 
-  async function getCurrentViewTracks() {
-    if (state.view.type === 'all') return state.allTracks;
-    if (state.view.type === 'playlist') {
-      const pl = state.playlists.find((p) => p.id === state.view.id);
+  async function resolveViewTracks(view) {
+    if (view.type === 'all') return state.allTracks;
+    if (view.type === 'playlist') {
+      const pl = state.playlists.find((p) => p.id === view.id);
       return pl ? window.k7.sortTracks(pl.trackIds, state.sortMode) : [];
     }
-    if (state.view.type === 'artists') {
+    if (view.type === 'artists') {
       const index = await window.k7.getArtistIndex();
       return index.flatMap((a) => a.albums.flatMap((al) => al.tracks));
     }
-    if (state.view.type === 'genres') {
+    if (view.type === 'genres') {
       const index = await window.k7.getGenreIndex();
       return index.flatMap((g) => g.tracks);
     }
     return [];
   }
 
+  function getCurrentViewTracks() {
+    return resolveViewTracks(state.view);
+  }
+
+  function describeQueueView(view) {
+    if (!view) return '';
+    if (view.type === 'all') return 'ALL TRACKS';
+    if (view.type === 'artists') return 'ARTISTS / ALBUMS';
+    if (view.type === 'genres') return 'GENRES';
+    if (view.type === 'playlist') {
+      const pl = state.playlists.find((p) => p.id === view.id);
+      return pl ? pl.name : 'PLAYLIST';
+    }
+    return '';
+  }
+
+  /** Single point for changing which view "owns" the current queue — keeps
+   * state, the transport-bar label, and the sidebar's playing-from indicator
+   * from drifting out of sync with each other. */
+  function setActiveQueueView(view) {
+    state.activeQueueView = view;
+    el.nowSource.textContent = view ? `PLAYING FROM ${describeQueueView(view)}` : '';
+    renderPlaylistSidebar();
+  }
+
   document.getElementById('btn-playpause').addEventListener('click', async () => {
     if (!player.currentTrack()) {
       const tracks = await getCurrentViewTracks();
       if (tracks.length === 0) return;
+      setActiveQueueView({ ...state.view });
       player.setQueue(tracks, 0);
       return;
     }

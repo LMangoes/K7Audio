@@ -66,7 +66,7 @@ class K7Player {
   }
 
   /** Loads a new queue (array of track objects with .fileUrl) and starts at startIndex. */
-  setQueue(tracks, startIndex = 0) {
+  setQueue(tracks, startIndex = 0, autoplay = true) {
     this.queue = tracks;
     this.order = this._freshOrder(tracks.length);
     // Bring the requested start track to the front of the play order so
@@ -77,7 +77,19 @@ class K7Player {
       this.order.unshift(startIndex);
     }
     this.position = 0;
-    this._loadCurrent(true);
+    this._loadCurrent(autoplay);
+  }
+
+  /** One-shot seek once the current track's metadata is available (setting
+   * currentTime before duration is known is unreliable). Used after
+   * setQueue(..., false) to restore a saved playback position. */
+  seekOnceLoaded(seconds) {
+    const target = Math.max(0, seconds || 0);
+    const onLoaded = () => {
+      this.audio.currentTime = target;
+      this.audio.removeEventListener('loadedmetadata', onLoaded);
+    };
+    this.audio.addEventListener('loadedmetadata', onLoaded);
   }
 
   setShuffle(on) {
@@ -104,28 +116,6 @@ class K7Player {
     this.onTrackChange?.(track);
     this._updateMediaSessionMetadata(track);
     if (autoplay) this.play();
-  }
-
-  /**
-   * Restores a single track, paused, at a saved position — used on app
-   * launch to resume where the last session left off. Does not call play():
-   * "loaded and paused at the timestamp", not resumed playback. Seeking
-   * happens on 'loadedmetadata' since setting currentTime before the browser
-   * knows the track's duration is unreliable.
-   */
-  loadPaused(track, positionSec) {
-    this.queue = [track];
-    this.order = [0];
-    this.position = 0;
-    this.audio.src = track.fileUrl;
-    this.onTrackChange?.(track);
-    this._updateMediaSessionMetadata(track);
-    const target = Math.max(0, positionSec || 0);
-    const onLoaded = () => {
-      this.audio.currentTime = target;
-      this.audio.removeEventListener('loadedmetadata', onLoaded);
-    };
-    this.audio.addEventListener('loadedmetadata', onLoaded);
   }
 
   currentTrack() {
