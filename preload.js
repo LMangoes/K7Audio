@@ -4,7 +4,11 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('k7', {
   scanLibrary: () => ipcRenderer.invoke('library:scan'),
-  addLibraryFolder: () => ipcRenderer.invoke('library:add-folder'),
+  launchLoad: () => ipcRenderer.invoke('library:launch-load'),
+  pickLibraryFolder: () => ipcRenderer.invoke('library:pick-folder'),
+  checkOrganization: (folderPath) => ipcRenderer.invoke('library:check-organization', folderPath),
+  organizeLibrary: (folderPath) => ipcRenderer.invoke('library:organize', folderPath),
+  confirmAddFolder: (folderPath) => ipcRenderer.invoke('library:confirm-add-folder', folderPath),
   removeLibraryFolder: (folderPath) => ipcRenderer.invoke('library:remove-folder', folderPath),
   sortAllSongs: (mode) => ipcRenderer.invoke('library:sort-all-songs', mode),
   sortTracks: (trackIds, mode) => ipcRenderer.invoke('library:sort-tracks', { trackIds, mode }),
@@ -21,5 +25,8 @@ contextBridge.exposeInMainWorld('k7', {
   addTracksToPlaylist: (id, trackIds) => ipcRenderer.invoke('playlists:addTracks', { id, trackIds }),
   removeTrackFromPlaylist: (id, trackId) => ipcRenderer.invoke('playlists:removeTrack', { id, trackId }),
   reorderPlaylist: (id, trackIds) => ipcRenderer.invoke('playlists:reorder', { id, trackIds }),
+  reorderPlaylists: (orderedIds) => ipcRenderer.invoke('playlists:reorder-list', orderedIds),
   setPlaylistCover: (id) => ipcRenderer.invoke('playlists:set-cover', id),
+  addCustomTag: (trackId, tag) => ipcRenderer.invoke('tags:add', { trackId, tag }),
+  removeCustomTag: (trackId, tag) => ipcRenderer.invoke('tags:remove', { trackId, tag }),
 });

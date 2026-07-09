@@ -92,6 +92,25 @@ class K7Player {
     this.audio.addEventListener('loadedmetadata', onLoaded);
   }
 
+  /** Appends to the end of the play order, unaffected by shuffle — an
+   * explicit "add to queue" action should predictably play last, not get
+   * randomized into the middle of whatever's already queued. If nothing is
+   * currently loaded, there's no meaningful "queue" to append to, so it
+   * loads as the current track instead (paused — this isn't a "play now"
+   * action, same reasoning as setQueue's autoplay flag). */
+  addToQueue(track) {
+    if (this.position < 0 || this.queue.length === 0) {
+      this.queue = [track];
+      this.order = [0];
+      this.position = 0;
+      this._loadCurrent(false);
+      return;
+    }
+    const newIndex = this.queue.length;
+    this.queue = [...this.queue, track];
+    this.order = [...this.order, newIndex];
+  }
+
   setShuffle(on) {
     this.shuffleOn = on;
     if (this.queue.length === 0) return;

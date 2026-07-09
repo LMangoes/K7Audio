@@ -20,6 +20,7 @@
       <button class="nav-item active" data-view="all">ALL TRACKS</button>
       <button class="nav-item" data-view="artists">ARTISTS / ALBUMS</button>
       <button class="nav-item" data-view="genres">GENRES</button>
+      <button class="nav-item" data-view="favourites">♥ FAVOURITES</button>
 
       <div class="sidebar-section">
         <div class="sidebar-label">
@@ -44,6 +45,7 @@
       <div class="content-header">
         <h2 id="view-title">ALL TRACKS</h2>
         <div class="content-tools">
+          <button id="settings-btn" class="mini-btn" title="Settings">⋮</button>
           <div class="search-wrap">
             <input id="search-input" class="search-input" type="text" placeholder="FILTER TRACKS / GENRE..." />
             <button id="search-clear" class="search-clear" title="Clear filter" aria-label="Clear filter">×</button>
@@ -95,11 +97,16 @@
 
     <div class="volume-wrap">
       <span class="vol-icon">VOL</span>
-      <input type="range" id="volume-range" min="0" max="100" value="80" />
+      <div class="volume-led" id="volume-led">
+        <div class="volume-led-fill" id="volume-led-fill"></div>
+        <input type="range" id="volume-range" min="0" max="100" value="80" />
+      </div>
+      <span class="vol-value" id="vol-value">80</span>
     </div>
   </footer>
 
   <div id="modal-root"></div>
+  <div id="toast-root" class="toast-root"></div>
 </div>
 
 <audio id="audio-el" preload="metadata"></audio>

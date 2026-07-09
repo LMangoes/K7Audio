@@ -5,6 +5,7 @@ const path = require('path');
 const fs = require('fs');
 const { pathToFileURL } = require('url');
 const { scanLibrary, buildArtistAlbumIndex, buildGenreIndex, sortAllSongs } = require('./lib/scanner');
+const { checkOrganization, organizeLibrary } = require('./lib/organizer');
 const { Store } = require('./lib/store');
 
 // Portable by design: settings/playlists live next to the app (this folder),
@@ -20,6 +21,11 @@ function withFileUrls(tracks) {
     fileUrl: pathToFileURL(t.filePath).href,
     coverUrl: t.coverPath ? pathToFileURL(t.coverPath).href : null,
   }));
+}
+
+function withCustomTags(tracks) {
+  const customTags = store.getCustomTags();
+  return tracks.map((t) => ({ ...t, customTags: customTags[t.id] || [] }));
 }
 
 function withCoverUrls(playlists) {
@@ -56,8 +62,46 @@ async function runScan() {
   }
 
   const { tracks, errors } = await scanLibrary(settings.libraryPaths);
-  cachedTracks = withFileUrls(tracks);
+  cachedTracks = withCustomTags(withFileUrls(tracks));
+  saveLibraryCache(cachedTracks, settings.libraryPaths);
   return { tracks: cachedTracks, errors, libraryPaths: settings.libraryPaths };
+}
+
+const LIBRARY_CACHE_FILE = path.join(__dirname, 'data', 'library-cache.json');
+
+function saveLibraryCache(tracks, libraryPaths) {
+  try {
+    fs.mkdirSync(path.dirname(LIBRARY_CACHE_FILE), { recursive: true });
+    const tmp = `${LIBRARY_CACHE_FILE}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify({ tracks, libraryPaths }), 'utf8');
+    fs.renameSync(tmp, LIBRARY_CACHE_FILE);
+  } catch {
+    // Not fatal — worst case, next launch just does a full rescan instead of using a cache.
+  }
+}
+
+function loadLibraryCache() {
+  try {
+    return JSON.parse(fs.readFileSync(LIBRARY_CACHE_FILE, 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
+/** Used only for the initial load on app launch — the manual RESCAN button
+ * always goes through runScan() directly, regardless of this setting. */
+async function loadForLaunch() {
+  const settings = store.getSettings();
+  if (settings.autoRescanOnLaunch === false) {
+    const cache = loadLibraryCache();
+    if (cache && cache.tracks?.length > 0) {
+      cachedTracks = cache.tracks;
+      return { tracks: cachedTracks, errors: [], libraryPaths: cache.libraryPaths || [] };
+    }
+    // No usable cache yet (first launch, or it was never written) — fall
+    // through to a real scan rather than showing an empty library.
+  }
+  return runScan();
 }
 
 function createWindow() {
@@ -88,13 +132,26 @@ app.on('window-all-closed', () => {
 // --- IPC: library ---
 
 ipcMain.handle('library:scan', async () => runScan());
+ipcMain.handle('library:launch-load', async () => loadForLaunch());
 
-ipcMain.handle('library:add-folder', async () => {
+ipcMain.handle('library:pick-folder', async () => {
   const win = BrowserWindow.getFocusedWindow();
   const result = await dialog.showOpenDialog(win, { properties: ['openDirectory'] });
-  if (result.canceled || result.filePaths.length === 0) return { added: false };
+  if (result.canceled || result.filePaths.length === 0) return { canceled: true };
+  return { canceled: false, path: result.filePaths[0] };
+});
+
+ipcMain.handle('library:check-organization', async (_evt, folderPath) => {
+  return checkOrganization(folderPath);
+});
+
+ipcMain.handle('library:organize', async (_evt, folderPath) => {
+  return organizeLibrary(folderPath);
+});
+
+ipcMain.handle('library:confirm-add-folder', async (_evt, folderPath) => {
   const settings = store.getSettings();
-  const next = [...new Set([...settings.libraryPaths, result.filePaths[0]])];
+  const next = [...new Set([...settings.libraryPaths, folderPath])];
   store.saveSettings({ libraryPaths: next });
   const scan = await runScan();
   return { added: true, ...scan };
@@ -138,6 +195,7 @@ ipcMain.handle('playlists:delete', async (_evt, id) => store.deletePlaylist(id))
 ipcMain.handle('playlists:addTracks', async (_evt, { id, trackIds }) => store.addTracksToPlaylist(id, trackIds));
 ipcMain.handle('playlists:removeTrack', async (_evt, { id, trackId }) => store.removeTrackFromPlaylist(id, trackId));
 ipcMain.handle('playlists:reorder', async (_evt, { id, trackIds }) => store.reorderPlaylist(id, trackIds));
+ipcMain.handle('playlists:reorder-list', async (_evt, orderedIds) => store.reorderPlaylists(orderedIds));
 
 ipcMain.handle('playlists:set-cover', async (_evt, id) => {
   const win = BrowserWindow.getFocusedWindow();
@@ -149,4 +207,22 @@ ipcMain.handle('playlists:set-cover', async (_evt, id) => {
   const dest = saveCoverForPlaylist(id, result.filePaths[0]);
   const updated = store.setPlaylistCover(id, dest);
   return withCoverUrls([updated])[0];
+});
+
+function updateCachedTrackTags(trackId) {
+  const idx = cachedTracks.findIndex((t) => t.id === trackId);
+  if (idx === -1) return null;
+  const allCustomTags = store.getCustomTags();
+  cachedTracks[idx] = { ...cachedTracks[idx], customTags: allCustomTags[trackId] || [] };
+  return cachedTracks[idx];
+}
+
+ipcMain.handle('tags:add', async (_evt, { trackId, tag }) => {
+  store.addCustomTag(trackId, tag);
+  return updateCachedTrackTags(trackId);
+});
+
+ipcMain.handle('tags:remove', async (_evt, { trackId, tag }) => {
+  store.removeCustomTag(trackId, tag);
+  return updateCachedTrackTags(trackId);
 });

@@ -1,5 +1,10 @@
 'use strict';
 
+// Must match lib/store.js's FAVOURITES_ID — the renderer can't import that
+// Node module directly (sandboxed, no require), so it's duplicated here as a
+// stable literal rather than round-tripped through IPC on every reference.
+const FAVOURITES_PLAYLIST_ID = 'favourites';
+
 (() => {
   const state = {
     allTracks: [],
@@ -22,6 +27,7 @@
     libraryPaths: document.getElementById('library-paths'),
     scanStatus: document.getElementById('scan-status'),
     modalRoot: document.getElementById('modal-root'),
+    toastRoot: document.getElementById('toast-root'),
     nowTitle: document.getElementById('now-title'),
     nowArtist: document.getElementById('now-artist'),
     nowSource: document.getElementById('now-source'),
@@ -35,6 +41,8 @@
     timeCurrent: document.getElementById('time-current'),
     timeTotal: document.getElementById('time-total'),
     volumeRange: document.getElementById('volume-range'),
+    volumeFill: document.getElementById('volume-led-fill'),
+    volValue: document.getElementById('vol-value'),
   };
 
   const audioEl = document.getElementById('audio-el');
@@ -96,12 +104,14 @@
     state.sortMode = state.settings.allSongsSort || 'artist-album';
     el.sortSelect.value = state.sortMode;
     el.volumeRange.value = Math.round((state.settings.volume ?? 0.8) * 100);
+    el.volumeFill.style.width = `${el.volumeRange.value}%`;
+    el.volValue.textContent = el.volumeRange.value;
     player.setVolume(state.settings.volume ?? 0.8);
     player.setShuffle(Boolean(state.settings.shuffle));
     player.setRepeat(state.settings.repeat || 'off');
     updateShuffleRepeatUI();
 
-    await rescan();
+    await loadLibraryForLaunch();
     state.playlists = await window.k7.getPlaylists();
     renderLibraryPaths();
     renderPlaylistSidebar();
@@ -133,22 +143,41 @@
     el.scanStatus.textContent = 'SCANNING...';
     el.scanStatus.classList.remove('error');
     try {
-      const { tracks, errors, libraryPaths } = await window.k7.scanLibrary();
-      state.allTracks = tracks;
-      state.tracksById = new Map(tracks.map((t) => [t.id, t]));
-      state.settings.libraryPaths = libraryPaths;
-      el.scanStatus.textContent = `${tracks.length} TRACKS INDEXED`;
-      if (errors.length) {
-        el.scanStatus.textContent += ` · ${errors.length} ERRORS`;
-        el.scanStatus.classList.add('error');
-      }
-      if (tracks.length === 0) {
-        el.scanStatus.textContent = 'NO LIBRARY FOLDER SET';
-      }
+      applyScanData(await window.k7.scanLibrary());
     } catch (err) {
       el.scanStatus.textContent = 'SCAN FAILED';
       el.scanStatus.classList.add('error');
       console.error(err);
+    }
+  }
+
+  // Used only for the initial load on app launch — respects the
+  // autoRescanOnLaunch setting (main process falls back to a cached
+  // snapshot instead of a full filesystem scan). The manual RESCAN button
+  // always goes through rescan() above, unconditionally.
+  async function loadLibraryForLaunch() {
+    el.scanStatus.textContent = 'LOADING...';
+    el.scanStatus.classList.remove('error');
+    try {
+      applyScanData(await window.k7.launchLoad());
+    } catch (err) {
+      el.scanStatus.textContent = 'LOAD FAILED';
+      el.scanStatus.classList.add('error');
+      console.error(err);
+    }
+  }
+
+  function applyScanData({ tracks, errors, libraryPaths }) {
+    state.allTracks = tracks;
+    state.tracksById = new Map(tracks.map((t) => [t.id, t]));
+    state.settings.libraryPaths = libraryPaths;
+    el.scanStatus.textContent = `${tracks.length} TRACKS INDEXED`;
+    if (errors && errors.length) {
+      el.scanStatus.textContent += ` · ${errors.length} ERRORS`;
+      el.scanStatus.classList.add('error');
+    }
+    if (tracks.length === 0) {
+      el.scanStatus.textContent = 'NO LIBRARY FOLDER SET';
     }
     renderLibraryPaths();
   }
@@ -176,7 +205,7 @@
       btn.title = 'Remove folder';
       btn.addEventListener('click', async () => {
         const result = await window.k7.removeLibraryFolder(p);
-        applyScanResult(result);
+        applyScanData(result);
         renderCurrentView();
       });
       row.append(label, btn);
@@ -184,19 +213,14 @@
     }
   }
 
-  function applyScanResult(result) {
-    state.allTracks = result.tracks;
-    state.tracksById = new Map(result.tracks.map((t) => [t.id, t]));
-    state.settings.libraryPaths = result.libraryPaths;
-    el.scanStatus.textContent = `${result.tracks.length} TRACKS INDEXED`;
-    renderLibraryPaths();
-  }
-
   function renderPlaylistSidebar() {
     el.playlistList.innerHTML = '';
-    for (const pl of state.playlists) {
+    const userPlaylists = state.playlists.filter((p) => p.id !== FAVOURITES_PLAYLIST_ID);
+    for (const pl of userPlaylists) {
       const item = document.createElement('div');
       item.className = 'playlist-item';
+      item.draggable = true;
+      item.dataset.playlistId = pl.id;
       if (state.view.type === 'playlist' && state.view.id === pl.id) item.classList.add('active');
       if (state.activeQueueView?.type === 'playlist' && state.activeQueueView.id === pl.id) item.classList.add('playing-from');
 
@@ -211,33 +235,76 @@
       del.className = 'del-btn';
       del.textContent = '×';
       del.title = 'Delete playlist';
-      del.addEventListener('click', async (e) => {
+      del.addEventListener('click', (e) => {
         e.stopPropagation();
-        if (!confirm(`Delete playlist "${pl.name}"?`)) return;
-        await window.k7.deletePlaylist(pl.id);
-        state.playlists = await window.k7.getPlaylists();
-        if (state.view.type === 'playlist' && state.view.id === pl.id) switchView({ type: 'all' });
-        else renderPlaylistSidebar();
+        openConfirmModal(`Delete playlist "${pl.name}"? This cannot be undone.`, async () => {
+          await window.k7.deletePlaylist(pl.id);
+          state.playlists = await window.k7.getPlaylists();
+          if (state.view.type === 'playlist' && state.view.id === pl.id) switchView({ type: 'all' });
+          else renderPlaylistSidebar();
+        });
       });
 
-      const rename = document.createElement('button');
-      rename.className = 'rename-btn';
-      rename.textContent = '✎';
-      rename.title = 'Rename playlist';
-      rename.addEventListener('click', (e) => {
-        e.stopPropagation();
-        openRenamePlaylistModal(pl);
-      });
-
-      item.append(cover, label, count, rename, del);
+      item.append(cover, label, count, del);
       item.addEventListener('click', () => switchView({ type: 'playlist', id: pl.id }));
+      wireDragReorder(item, pl.id);
       el.playlistList.appendChild(item);
     }
   }
 
+  let dragSourceId = null;
+
+  function wireDragReorder(item, playlistId) {
+    item.addEventListener('dragstart', (e) => {
+      dragSourceId = playlistId;
+      item.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+    });
+    item.addEventListener('dragend', () => {
+      item.classList.remove('dragging');
+      document.querySelectorAll('.playlist-item.drag-over-top, .playlist-item.drag-over-bottom').forEach((el2) => {
+        el2.classList.remove('drag-over-top', 'drag-over-bottom');
+      });
+    });
+    item.addEventListener('dragover', (e) => {
+      if (!dragSourceId || dragSourceId === playlistId) return;
+      e.preventDefault();
+      const rect = item.getBoundingClientRect();
+      const before = e.clientY - rect.top < rect.height / 2;
+      item.classList.toggle('drag-over-top', before);
+      item.classList.toggle('drag-over-bottom', !before);
+    });
+    item.addEventListener('dragleave', () => {
+      item.classList.remove('drag-over-top', 'drag-over-bottom');
+    });
+    item.addEventListener('drop', async (e) => {
+      e.preventDefault();
+      const before = item.classList.contains('drag-over-top');
+      item.classList.remove('drag-over-top', 'drag-over-bottom');
+      if (!dragSourceId || dragSourceId === playlistId) return;
+
+      const userPlaylists = state.playlists.filter((p) => p.id !== FAVOURITES_PLAYLIST_ID);
+      const ids = userPlaylists.map((p) => p.id);
+      const fromIdx = ids.indexOf(dragSourceId);
+      if (fromIdx === -1) return;
+      ids.splice(fromIdx, 1);
+      let toIdx = ids.indexOf(playlistId);
+      if (!before) toIdx += 1;
+      ids.splice(toIdx, 0, dragSourceId);
+
+      dragSourceId = null;
+      state.playlists = await window.k7.reorderPlaylists(ids);
+      renderPlaylistSidebar();
+    });
+  }
+
   function updateNavActive() {
     document.querySelectorAll('.nav-item').forEach((btn) => {
-      btn.classList.toggle('active', btn.dataset.view === state.view.type);
+      if (btn.dataset.view === 'favourites') {
+        btn.classList.toggle('active', state.view.type === 'playlist' && state.view.id === FAVOURITES_PLAYLIST_ID);
+      } else {
+        btn.classList.toggle('active', btn.dataset.view === state.view.type);
+      }
     });
   }
 
@@ -253,6 +320,7 @@
     renderPlaylistSidebar();
     renderCurrentView();
   }
+
 
   // ---------- Track row ----------
 
@@ -322,7 +390,16 @@
       removeCell.appendChild(removeBtn);
     }
 
-    row.append(coverCell, idxCell, titleCell, artistCell, albumCell, durCell, addBtn, removeCell);
+    const optionsBtn = document.createElement('button');
+    optionsBtn.className = 'row-options-btn';
+    optionsBtn.textContent = '⋮';
+    optionsBtn.title = 'Song options';
+    optionsBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openTrackOptionsModal(track);
+    });
+
+    row.append(coverCell, idxCell, titleCell, artistCell, albumCell, durCell, addBtn, removeCell, optionsBtn);
     row.addEventListener('click', () => {
       const queueIdx = queueList.findIndex((t) => t.id === track.id);
       setActiveQueueView({ ...state.view });
@@ -334,7 +411,7 @@
   function makeListHeader() {
     const header = document.createElement('div');
     header.className = 'list-header';
-    header.innerHTML = '<span></span><span>#</span><span>TITLE</span><span>ARTIST</span><span>ALBUM</span><span></span><span></span><span></span>';
+    header.innerHTML = '<span></span><span>#</span><span>TITLE</span><span>ARTIST</span><span>ALBUM</span><span></span><span></span><span></span><span></span>';
     return header;
   }
 
@@ -398,14 +475,16 @@
       renderCurrentView();
     });
 
-    const renameBtn = document.createElement('button');
-    renameBtn.className = 'mini-btn';
-    renameBtn.textContent = 'RENAME';
-    renameBtn.addEventListener('click', () => openRenamePlaylistModal(pl));
-
     const btnRow = document.createElement('div');
     btnRow.className = 'playlist-cover-actions';
-    btnRow.append(changeBtn, renameBtn);
+    btnRow.appendChild(changeBtn);
+    if (pl.id !== FAVOURITES_PLAYLIST_ID) {
+      const renameBtn = document.createElement('button');
+      renameBtn.className = 'mini-btn';
+      renameBtn.textContent = 'RENAME';
+      renameBtn.addEventListener('click', () => openRenamePlaylistModal(pl));
+      btnRow.appendChild(renameBtn);
+    }
     meta.append(count, btnRow);
     header.appendChild(meta);
     return header;
@@ -451,7 +530,22 @@
       const artistNode = document.createElement('details');
       artistNode.className = 'artist-node';
       const summary = document.createElement('summary');
-      summary.textContent = `${artistEntry.artist} (${artistEntry.albums.reduce((n, a) => n + a.tracks.length, 0)})`;
+      summary.className = 'artist-summary-row';
+      const summaryLabel = document.createElement('span');
+      summaryLabel.textContent = `${artistEntry.artist} (${artistEntry.albums.reduce((n, a) => n + a.tracks.length, 0)})`;
+      const playBtn = document.createElement('button');
+      playBtn.className = 'artist-play-btn mini-btn';
+      playBtn.textContent = '► PLAY';
+      playBtn.title = `Play all ${artistEntry.artist} tracks`;
+      playBtn.addEventListener('click', (e) => {
+        e.preventDefault(); // don't trigger the <details> disclosure toggle
+        e.stopPropagation();
+        const allTracks = artistEntry.albums.flatMap((al) => al.tracks);
+        if (allTracks.length === 0) return;
+        setActiveQueueView({ type: 'artist', name: artistEntry.artist });
+        player.setQueue(allTracks, 0);
+      });
+      summary.append(summaryLabel, playBtn);
       artistNode.appendChild(summary);
 
       for (const album of visibleAlbums) {
@@ -498,12 +592,45 @@
     el.modalRoot.innerHTML = '';
   }
 
-  function openModal(html, onMount) {
-    el.modalRoot.innerHTML = `<div class="modal-backdrop"><div class="modal-box">${html}</div></div>`;
+  function openModal(html, onMount, extraClass = '') {
+    el.modalRoot.innerHTML = `<div class="modal-backdrop"><div class="modal-box ${extraClass}">${html}</div></div>`;
     el.modalRoot.querySelector('.modal-backdrop').addEventListener('click', (e) => {
       if (e.target.classList.contains('modal-backdrop')) closeModal();
     });
     onMount(el.modalRoot.querySelector('.modal-box'));
+  }
+
+  /** Themed replacement for window.confirm() — native dialogs break the
+   * app's aesthetic entirely (OS chrome, system font, no way to style them). */
+  function openConfirmModal(message, onConfirm) {
+    openModal(
+      `<h3>CONFIRM</h3>
+       <p style="font-size:12px;color:var(--text);margin:0 0 16px;line-height:1.5;">${escapeHtml(message)}</p>
+       <div class="modal-actions">
+         <button id="confirm-cancel">CANCEL</button>
+         <button id="confirm-ok" class="danger-btn">DELETE</button>
+       </div>`,
+      (box) => {
+        box.querySelector('#confirm-cancel').addEventListener('click', closeModal);
+        box.querySelector('#confirm-ok').addEventListener('click', async () => {
+          closeModal();
+          await onConfirm();
+        });
+      },
+      'danger'
+    );
+  }
+
+  function showToast(message) {
+    const toast = document.createElement('div');
+    toast.className = 'toast';
+    toast.textContent = message;
+    el.toastRoot.appendChild(toast);
+    requestAnimationFrame(() => toast.classList.add('show'));
+    setTimeout(() => {
+      toast.classList.remove('show');
+      setTimeout(() => toast.remove(), 250);
+    }, 1800);
   }
 
   function openNewPlaylistModal() {
@@ -608,6 +735,129 @@
     box.querySelector('#pl-close').addEventListener('click', closeModal);
   }
 
+  function openTrackOptionsModal(track) {
+    renderTrackOptionsModal(track);
+  }
+
+  function renderTrackOptionsModal(track) {
+    const favPlaylist = state.playlists.find((p) => p.id === FAVOURITES_PLAYLIST_ID);
+    const isFav = favPlaylist ? favPlaylist.trackIds.includes(track.id) : false;
+    const customTags = track.customTags || [];
+    const tagsHtml = customTags.length
+      ? customTags.map((tag) => `<span class="tag-chip">${escapeHtml(tag)} <button class="tag-remove-btn" data-tag="${escapeHtml(tag)}">×</button></span>`).join('')
+      : '<span class="tag-chip-empty">none yet</span>';
+
+    const html = `
+      <h3>${escapeHtml(track.title)}</h3>
+      <div class="modal-list">
+        <button id="opt-queue">ADD TO QUEUE</button>
+        <button id="opt-fav" class="${isFav ? 'in-playlist' : ''}">${isFav ? '✓ ' : ''}FAVOURITE</button>
+      </div>
+      <div class="tag-section">
+        <div class="sidebar-label"><span>CUSTOM TAGS</span></div>
+        <div class="tag-chips">${tagsHtml}</div>
+        <div class="tag-add-row">
+          <input type="text" id="new-tag-input" placeholder="ADD TAG..." maxlength="30" />
+          <button id="add-tag-btn" class="mini-btn">ADD</button>
+        </div>
+      </div>
+      <div class="modal-actions"><button id="opt-close">CLOSE</button></div>
+    `;
+
+    const existingBox = el.modalRoot.querySelector('.modal-box');
+    if (existingBox) {
+      existingBox.innerHTML = html;
+      wireTrackOptionsModal(existingBox, track);
+    } else {
+      openModal(html, (box) => wireTrackOptionsModal(box, track));
+    }
+  }
+
+  function wireTrackOptionsModal(box, track) {
+    box.querySelector('#opt-close').addEventListener('click', closeModal);
+
+    box.querySelector('#opt-queue').addEventListener('click', () => {
+      player.addToQueue(track);
+      showToast(`ADDED TO QUEUE: ${track.title}`);
+      closeModal();
+    });
+
+    box.querySelector('#opt-fav').addEventListener('click', async () => {
+      const favPlaylist = state.playlists.find((p) => p.id === FAVOURITES_PLAYLIST_ID);
+      const isFav = favPlaylist ? favPlaylist.trackIds.includes(track.id) : false;
+      if (isFav) await window.k7.removeTrackFromPlaylist(FAVOURITES_PLAYLIST_ID, track.id);
+      else await window.k7.addTracksToPlaylist(FAVOURITES_PLAYLIST_ID, [track.id]);
+      state.playlists = await window.k7.getPlaylists();
+      renderPlaylistSidebar();
+      if (state.view.type === 'playlist' && state.view.id === FAVOURITES_PLAYLIST_ID) renderCurrentView();
+      renderTrackOptionsModal(track);
+    });
+
+    box.querySelectorAll('.tag-remove-btn').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const updatedTrack = await window.k7.removeCustomTag(track.id, btn.dataset.tag);
+        applyUpdatedTrack(updatedTrack);
+        renderCurrentView();
+        renderTrackOptionsModal(updatedTrack || track);
+      });
+    });
+
+    const addTag = async () => {
+      const input = box.querySelector('#new-tag-input');
+      const tag = input.value.trim();
+      if (!tag) return;
+      const updatedTrack = await window.k7.addCustomTag(track.id, tag);
+      applyUpdatedTrack(updatedTrack);
+      renderCurrentView();
+      renderTrackOptionsModal(updatedTrack || track);
+    };
+    box.querySelector('#add-tag-btn').addEventListener('click', addTag);
+    box.querySelector('#new-tag-input').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') addTag();
+    });
+  }
+
+  function applyUpdatedTrack(updatedTrack) {
+    if (!updatedTrack) return;
+    state.tracksById.set(updatedTrack.id, updatedTrack);
+    const idx = state.allTracks.findIndex((t) => t.id === updatedTrack.id);
+    if (idx !== -1) state.allTracks[idx] = updatedTrack;
+  }
+
+  function openSettingsModal() {
+    renderSettingsModal();
+  }
+
+  function renderSettingsModal() {
+    const autoRescan = state.settings.autoRescanOnLaunch !== false;
+    const html = `
+      <h3>SETTINGS</h3>
+      <div class="settings-row">
+        <span>RESCAN LIBRARY ON LAUNCH</span>
+        <div class="toggle-switch ${autoRescan ? 'on' : ''}" id="toggle-auto-rescan" role="switch" aria-checked="${autoRescan}"><div class="toggle-knob"></div></div>
+      </div>
+      <p style="font-size:10px;color:var(--text-dim);margin:4px 0 0;line-height:1.5;">Off: launch loads the last known library instantly instead of re-scanning disk. RESCAN in the sidebar still works manually any time.</p>
+      <div class="modal-actions"><button id="settings-close">CLOSE</button></div>
+    `;
+    const existingBox = el.modalRoot.querySelector('.modal-box');
+    if (existingBox) {
+      existingBox.innerHTML = html;
+      wireSettingsModal(existingBox);
+    } else {
+      openModal(html, (box) => wireSettingsModal(box));
+    }
+  }
+
+  function wireSettingsModal(box) {
+    box.querySelector('#settings-close').addEventListener('click', closeModal);
+    box.querySelector('#toggle-auto-rescan').addEventListener('click', () => {
+      const next = !(state.settings.autoRescanOnLaunch !== false);
+      state.settings.autoRescanOnLaunch = next;
+      window.k7.saveSettings({ autoRescanOnLaunch: next });
+      renderSettingsModal();
+    });
+  }
+
   // ---------- Transport UI ----------
 
   function updateShuffleRepeatUI() {
@@ -671,21 +921,101 @@
     }
   };
 
+  // ---------- Add folder / library organiser ----------
+
+  function baseName(filePath) {
+    return filePath.split(/[\\/]/).pop();
+  }
+
+  async function handleAddFolder() {
+    const picked = await window.k7.pickLibraryFolder();
+    if (picked.canceled) return;
+
+    const check = await window.k7.checkOrganization(picked.path);
+    if (!check.isOrganized) {
+      openOrganizePromptModal(picked.path, check);
+      return;
+    }
+    await finishAddFolder(picked.path);
+  }
+
+  async function finishAddFolder(folderPath) {
+    el.scanStatus.textContent = 'ADDING FOLDER...';
+    el.scanStatus.classList.remove('error');
+    const result = await window.k7.confirmAddFolder(folderPath);
+    if (result.added) {
+      applyScanData(result);
+      renderCurrentView();
+    }
+  }
+
+  function openOrganizePromptModal(folderPath, check) {
+    const count = check.looseAudioFiles.length;
+    const html = `
+      <h3>LIBRARY NOT ORGANISED</h3>
+      <p style="font-size:12px;color:var(--text);line-height:1.6;margin:0 0 14px;">
+        ${count} track${count === 1 ? '' : 's'} found loose in this folder, not inside an Artist/Album structure.
+        K7 Audio only scans inside artist folders — loose files would be silently skipped, not shown anywhere.
+        Organise now? Files are only <strong>moved</strong> by tag (Artist/Album), never deleted. Anything it can't
+        confidently place goes to an <strong>unsupported/</strong> folder instead of being left behind or lost.
+      </p>
+      <div class="modal-actions">
+        <button id="org-no">ADD AS-IS</button>
+        <button id="org-yes" style="color:var(--green);border-color:var(--green-dim);">ORGANISE</button>
+      </div>
+    `;
+    openModal(html, (box) => {
+      box.querySelector('#org-no').addEventListener('click', async () => {
+        closeModal();
+        await finishAddFolder(folderPath);
+      });
+      box.querySelector('#org-yes').addEventListener('click', async () => {
+        closeModal();
+        await runOrganizeThenAdd(folderPath);
+      });
+    });
+  }
+
+  async function runOrganizeThenAdd(folderPath) {
+    el.scanStatus.textContent = 'ORGANISING...';
+    el.scanStatus.classList.remove('error');
+    const report = await window.k7.organizeLibrary(folderPath);
+    showToast(`ORGANISED: ${report.moved.length} FILE${report.moved.length === 1 ? '' : 'S'} MOVED`);
+    if (report.unsupported.length > 0) {
+      openUnsupportedFilesModal(report);
+    }
+    await finishAddFolder(folderPath);
+  }
+
+  function openUnsupportedFilesModal(report) {
+    const items = report.unsupported
+      .map((u) => `<div class="unsupported-row">${escapeHtml(baseName(u.from))}<span class="unsupported-reason">${escapeHtml(u.reason)}</span></div>`)
+      .join('');
+    const html = `
+      <h3>${report.unsupported.length} FILE${report.unsupported.length === 1 ? '' : 'S'} NEED ATTENTION</h3>
+      <p style="font-size:11px;color:var(--text-dim);margin:0 0 10px;line-height:1.5;">
+        Moved to <strong style="color:var(--text);">${escapeHtml(report.unsupportedDir || 'unsupported/')}</strong> —
+        nothing deleted, nothing guessed.
+      </p>
+      <div class="modal-list unsupported-list">${items}</div>
+      <div class="modal-actions"><button id="unsupported-close">CLOSE</button></div>
+    `;
+    openModal(html, (box) => box.querySelector('#unsupported-close').addEventListener('click', closeModal));
+  }
+
   // ---------- Event wiring ----------
 
   document.querySelectorAll('.nav-item').forEach((btn) => {
-    btn.addEventListener('click', () => switchView({ type: btn.dataset.view }));
+    btn.addEventListener('click', () => {
+      if (btn.dataset.view === 'favourites') switchView({ type: 'playlist', id: FAVOURITES_PLAYLIST_ID });
+      else switchView({ type: btn.dataset.view });
+    });
   });
 
   document.getElementById('new-playlist-btn').addEventListener('click', openNewPlaylistModal);
+  document.getElementById('settings-btn').addEventListener('click', openSettingsModal);
 
-  document.getElementById('add-folder-btn').addEventListener('click', async () => {
-    const result = await window.k7.addLibraryFolder();
-    if (result.added) {
-      applyScanResult(result);
-      renderCurrentView();
-    }
-  });
+  document.getElementById('add-folder-btn').addEventListener('click', handleAddFolder);
 
   document.getElementById('rescan-btn').addEventListener('click', async () => {
     await rescan();
@@ -723,6 +1053,11 @@
       const pl = state.playlists.find((p) => p.id === view.id);
       return pl ? window.k7.sortTracks(pl.trackIds, state.sortMode) : [];
     }
+    if (view.type === 'artist') {
+      const index = await window.k7.getArtistIndex();
+      const artistEntry = index.find((a) => a.artist === view.name);
+      return artistEntry ? artistEntry.albums.flatMap((al) => al.tracks) : [];
+    }
     if (view.type === 'artists') {
       const index = await window.k7.getArtistIndex();
       return index.flatMap((a) => a.albums.flatMap((al) => al.tracks));
@@ -741,6 +1076,7 @@
   function describeQueueView(view) {
     if (!view) return '';
     if (view.type === 'all') return 'ALL TRACKS';
+    if (view.type === 'artist') return view.name;
     if (view.type === 'artists') return 'ARTISTS / ALBUMS';
     if (view.type === 'genres') return 'GENRES';
     if (view.type === 'playlist') {
@@ -791,9 +1127,12 @@
   });
 
   el.volumeRange.addEventListener('input', (e) => {
-    const v = Number(e.target.value) / 100;
+    const pct = Number(e.target.value);
+    const v = pct / 100;
     player.setVolume(v);
     window.k7.saveSettings({ volume: v });
+    el.volumeFill.style.width = `${pct}%`;
+    el.volValue.textContent = String(pct);
   });
 
   window.addEventListener('keydown', (e) => {
