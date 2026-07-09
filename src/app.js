@@ -532,6 +532,7 @@ const FAVOURITES_PLAYLIST_ID = 'favourites';
       const summary = document.createElement('summary');
       summary.className = 'artist-summary-row';
       const summaryLabel = document.createElement('span');
+      summaryLabel.className = 'artist-name-label';
       summaryLabel.textContent = `${artistEntry.artist} (${artistEntry.albums.reduce((n, a) => n + a.tracks.length, 0)})`;
       const playBtn = document.createElement('button');
       playBtn.className = 'artist-play-btn mini-btn';
@@ -757,7 +758,10 @@ const FAVOURITES_PLAYLIST_ID = 'favourites';
         <div class="sidebar-label"><span>CUSTOM TAGS</span></div>
         <div class="tag-chips">${tagsHtml}</div>
         <div class="tag-add-row">
-          <input type="text" id="new-tag-input" placeholder="ADD TAG..." maxlength="30" />
+          <div class="tag-input-wrap">
+            <input type="text" id="new-tag-input" placeholder="ADD TAG..." maxlength="30" autocomplete="off" />
+            <div class="tag-suggestions" id="tag-suggestions"></div>
+          </div>
           <button id="add-tag-btn" class="mini-btn">ADD</button>
         </div>
       </div>
@@ -802,19 +806,59 @@ const FAVOURITES_PLAYLIST_ID = 'favourites';
       });
     });
 
-    const addTag = async () => {
+    const addTag = async (explicitTag) => {
       const input = box.querySelector('#new-tag-input');
-      const tag = input.value.trim();
+      const tag = (explicitTag ?? input.value).trim();
       if (!tag) return;
       const updatedTrack = await window.k7.addCustomTag(track.id, tag);
       applyUpdatedTrack(updatedTrack);
       renderCurrentView();
       renderTrackOptionsModal(updatedTrack || track);
     };
-    box.querySelector('#add-tag-btn').addEventListener('click', addTag);
-    box.querySelector('#new-tag-input').addEventListener('keydown', (e) => {
+    box.querySelector('#add-tag-btn').addEventListener('click', () => addTag());
+    const tagInput = box.querySelector('#new-tag-input');
+    tagInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') addTag();
     });
+
+    const suggestBox = box.querySelector('#tag-suggestions');
+    const renderSuggestions = () => {
+      const query = tagInput.value.trim().toLowerCase();
+      const currentTags = new Set(track.customTags || []);
+      const candidates = getAllKnownCustomTags().filter((t) => !currentTags.has(t));
+      const matches = query ? candidates.filter((t) => t.toLowerCase().includes(query)) : candidates;
+      if (matches.length === 0) {
+        suggestBox.classList.remove('visible');
+        suggestBox.innerHTML = '';
+        return;
+      }
+      suggestBox.innerHTML = matches
+        .slice(0, 8)
+        .map((t) => `<div class="tag-suggestion-item" data-tag="${escapeHtml(t)}">${escapeHtml(t)}</div>`)
+        .join('');
+      suggestBox.classList.add('visible');
+      suggestBox.querySelectorAll('.tag-suggestion-item').forEach((item) => {
+        // mousedown, not click: fires before the input's blur event, so the
+        // dropdown-hide-on-blur handler below doesn't remove it first.
+        item.addEventListener('mousedown', (e) => {
+          e.preventDefault();
+          addTag(item.dataset.tag);
+        });
+      });
+    };
+    tagInput.addEventListener('input', renderSuggestions);
+    tagInput.addEventListener('focus', renderSuggestions);
+    tagInput.addEventListener('blur', () => {
+      setTimeout(() => suggestBox.classList.remove('visible'), 150);
+    });
+  }
+
+  function getAllKnownCustomTags() {
+    const tags = new Set();
+    for (const t of state.allTracks) {
+      for (const tag of t.customTags || []) tags.add(tag);
+    }
+    return [...tags].sort((a, b) => a.localeCompare(b));
   }
 
   function applyUpdatedTrack(updatedTrack) {
