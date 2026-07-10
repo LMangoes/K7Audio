@@ -77,6 +77,7 @@ class K7Player {
       this.order.unshift(startIndex);
     }
     this.position = 0;
+    this._manualQueueCount = 0;
     this._loadCurrent(autoplay);
   }
 
@@ -92,23 +93,26 @@ class K7Player {
     this.audio.addEventListener('loadedmetadata', onLoaded);
   }
 
-  /** Appends to the end of the play order, unaffected by shuffle — an
-   * explicit "add to queue" action should predictably play last, not get
-   * randomized into the middle of whatever's already queued. If nothing is
-   * currently loaded, there's no meaningful "queue" to append to, so it
-   * loads as the current track instead (paused — this isn't a "play now"
-   * action, same reasoning as setQueue's autoplay flag). */
+  /** "Play next": inserts immediately after the current track, or after the
+   * last manually-queued track if one's already pending — so queuing two
+   * songs back to back plays them in that order right after the current
+   * track, not buried at the end of whatever's already queued. Unaffected
+   * by shuffle. If nothing is currently loaded, loads as the current track
+   * instead (paused — this isn't a "play now" action). */
   addToQueue(track) {
     if (this.position < 0 || this.queue.length === 0) {
       this.queue = [track];
       this.order = [0];
       this.position = 0;
+      this._manualQueueCount = 0;
       this._loadCurrent(false);
       return;
     }
     const newIndex = this.queue.length;
     this.queue = [...this.queue, track];
-    this.order = [...this.order, newIndex];
+    const insertAt = this.position + 1 + (this._manualQueueCount || 0);
+    this.order.splice(insertAt, 0, newIndex);
+    this._manualQueueCount = (this._manualQueueCount || 0) + 1;
   }
 
   setShuffle(on) {
@@ -192,11 +196,13 @@ class K7Player {
     if (this.queue.length === 0) return;
     if (this.position + 1 < this.order.length) {
       this.position += 1;
+      this._manualQueueCount = Math.max(0, (this._manualQueueCount || 0) - 1);
     } else if (this.repeat === 'all' || userInitiated) {
       // Wrap around. A fresh shuffle order is drawn each lap so repeats
       // don't follow the same sequence every time round.
       this.order = this._freshOrder(this.queue.length);
       this.position = 0;
+      this._manualQueueCount = 0;
     } else {
       this.onQueueEnd?.();
       return;

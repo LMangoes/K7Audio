@@ -76,8 +76,15 @@ const FAVOURITES_PLAYLIST_ID = 'favourites';
     <rect x="14" y="72" width="72" height="6" rx="3" fill="#ff2fb0"/>
   </svg>`;
 
-  /** Cover priority: explicit playlist cover -> first track's folder art -> generic placeholder. */
-  function makeCoverEl(coverUrl, sizeClass) {
+  const PLACEHOLDER_HEART_SVG = `<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+    <rect width="100" height="100" rx="14" fill="#111318"/>
+    <path d="M50 78 L24 52 C12 40 12 22 26 16 C36 12 46 17 50 27 C54 17 64 12 74 16 C88 22 88 40 76 52 Z" fill="#ff2fb0"/>
+  </svg>`;
+
+  /** Cover priority: explicit playlist cover -> first track's folder art (or,
+   * for Favourites, a fixed heart identity instead — see resolvePlaylistCover)
+   * -> generic placeholder. */
+  function makeCoverEl(coverUrl, sizeClass, placeholder = 'cassette') {
     const wrap = document.createElement('div');
     wrap.className = `cover-thumb ${sizeClass}`;
     if (coverUrl) {
@@ -86,13 +93,17 @@ const FAVOURITES_PLAYLIST_ID = 'favourites';
       img.alt = '';
       wrap.appendChild(img);
     } else {
-      wrap.innerHTML = PLACEHOLDER_COVER_SVG;
+      wrap.innerHTML = placeholder === 'heart' ? PLACEHOLDER_HEART_SVG : PLACEHOLDER_COVER_SVG;
     }
     return wrap;
   }
 
   function resolvePlaylistCover(pl) {
     if (pl.coverUrl) return pl.coverUrl;
+    // Favourites gets a stable heart identity rather than borrowing whichever
+    // track happens to be first — that would change unpredictably as tracks
+    // are favourited/unfavourited, unlike a normal playlist's cover.
+    if (pl.id === FAVOURITES_PLAYLIST_ID) return null;
     const firstTrack = pl.trackIds.map((id) => state.tracksById.get(id)).find((t) => t?.coverUrl);
     return firstTrack ? firstTrack.coverUrl : null;
   }
@@ -224,13 +235,31 @@ const FAVOURITES_PLAYLIST_ID = 'favourites';
       if (state.view.type === 'playlist' && state.view.id === pl.id) item.classList.add('active');
       if (state.activeQueueView?.type === 'playlist' && state.activeQueueView.id === pl.id) item.classList.add('playing-from');
 
-      const cover = makeCoverEl(resolvePlaylistCover(pl), 'cover-xs');
+      const cover = makeCoverEl(resolvePlaylistCover(pl), 'cover-xs', pl.id === FAVOURITES_PLAYLIST_ID ? 'heart' : 'cassette');
       const label = document.createElement('span');
       label.className = 'playlist-item-label';
       label.textContent = pl.name;
       const count = document.createElement('span');
       count.className = 'count';
       count.textContent = pl.trackIds.length;
+      const playBtn = document.createElement('button');
+      playBtn.className = 'playlist-play-btn';
+      playBtn.textContent = '►';
+      playBtn.title = `Play ${pl.name}`;
+      playBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const alreadyPlayingThis = state.activeQueueView?.type === 'playlist' && state.activeQueueView.id === pl.id;
+        if (alreadyPlayingThis && player.currentTrack()) {
+          // Already the active queue — just ensure it's playing, picking up
+          // from wherever it's paused, like a normal resume. A dedicated
+          // play button should never double as a pause toggle.
+          player.play();
+          return;
+        }
+        const tracks = await window.k7.sortTracks(pl.trackIds, state.sortMode);
+        startFreshQueue(tracks, { type: 'playlist', id: pl.id });
+      });
+
       const del = document.createElement('button');
       del.className = 'del-btn';
       del.textContent = '×';
@@ -245,7 +274,7 @@ const FAVOURITES_PLAYLIST_ID = 'favourites';
         });
       });
 
-      item.append(cover, label, count, del);
+      item.append(cover, label, count, playBtn, del);
       item.addEventListener('click', () => switchView({ type: 'playlist', id: pl.id }));
       wireDragReorder(item, pl.id);
       el.playlistList.appendChild(item);
@@ -456,7 +485,7 @@ const FAVOURITES_PLAYLIST_ID = 'favourites';
   function makePlaylistCoverHeader(pl) {
     const header = document.createElement('div');
     header.className = 'playlist-cover-header';
-    header.appendChild(makeCoverEl(resolvePlaylistCover(pl), 'cover-lg'));
+    header.appendChild(makeCoverEl(resolvePlaylistCover(pl), 'cover-lg', pl.id === FAVOURITES_PLAYLIST_ID ? 'heart' : 'cassette'));
 
     const meta = document.createElement('div');
     meta.className = 'playlist-cover-meta';
@@ -542,9 +571,7 @@ const FAVOURITES_PLAYLIST_ID = 'favourites';
         e.preventDefault(); // don't trigger the <details> disclosure toggle
         e.stopPropagation();
         const allTracks = artistEntry.albums.flatMap((al) => al.tracks);
-        if (allTracks.length === 0) return;
-        setActiveQueueView({ type: 'artist', name: artistEntry.artist });
-        player.setQueue(allTracks, 0);
+        startFreshQueue(allTracks, { type: 'artist', name: artistEntry.artist });
       });
       summary.append(summaryLabel, playBtn);
       artistNode.appendChild(summary);
@@ -756,6 +783,11 @@ const FAVOURITES_PLAYLIST_ID = 'favourites';
       </div>
       <div class="tag-section">
         <div class="sidebar-label"><span>CUSTOM TAGS</span></div>
+        <p class="file-genre-line">${
+          track.genre
+            ? `FILE GENRE: <span class="file-genre-value">${escapeHtml(track.genre)}</span>`
+            : 'NO FILE GENRE — add a tag below to classify this track for browsing/sorting.'
+        }</p>
         <div class="tag-chips">${tagsHtml}</div>
         <div class="tag-add-row">
           <div class="tag-input-wrap">
@@ -782,7 +814,7 @@ const FAVOURITES_PLAYLIST_ID = 'favourites';
 
     box.querySelector('#opt-queue').addEventListener('click', () => {
       player.addToQueue(track);
-      showToast(`ADDED TO QUEUE: ${track.title}`);
+      showToast(`PLAYING NEXT: ${track.title}`);
       closeModal();
     });
 
@@ -1139,12 +1171,23 @@ const FAVOURITES_PLAYLIST_ID = 'favourites';
     renderPlaylistSidebar();
   }
 
+  /** Starts a brand-new queue from scratch (as opposed to clicking a specific
+   * row, which always starts at that exact track): respects shuffle by
+   * picking a random starting track when shuffle is on, first track when
+   * it's off. Used by every "play this whole thing" entry point — the main
+   * play button with nothing loaded, an artist's play button, a playlist's
+   * play button — so they behave consistently with each other. */
+  function startFreshQueue(tracks, viewDescriptor) {
+    if (tracks.length === 0) return;
+    const startIdx = player.shuffleOn ? Math.floor(Math.random() * tracks.length) : 0;
+    setActiveQueueView(viewDescriptor);
+    player.setQueue(tracks, startIdx);
+  }
+
   document.getElementById('btn-playpause').addEventListener('click', async () => {
     if (!player.currentTrack()) {
       const tracks = await getCurrentViewTracks();
-      if (tracks.length === 0) return;
-      setActiveQueueView({ ...state.view });
-      player.setQueue(tracks, 0);
+      startFreshQueue(tracks, { ...state.view });
       return;
     }
     player.togglePlay();

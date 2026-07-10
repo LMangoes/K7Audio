@@ -95,7 +95,12 @@ async function loadForLaunch() {
   if (settings.autoRescanOnLaunch === false) {
     const cache = loadLibraryCache();
     if (cache && cache.tracks?.length > 0) {
-      cachedTracks = cache.tracks;
+      // Re-apply custom tags fresh even though this is a cached snapshot:
+      // tags:add/tags:remove only patch the in-memory cachedTracks, they
+      // don't rewrite library-cache.json. Without this overlay, a tag added
+      // after the last full scan would silently revert on the next launch
+      // whenever auto-rescan-on-launch is off.
+      cachedTracks = withCustomTags(cache.tracks);
       return { tracks: cachedTracks, errors: [], libraryPaths: cache.libraryPaths || [] };
     }
     // No usable cache yet (first launch, or it was never written) — fall

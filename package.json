@@ -5,7 +5,7 @@
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "test": "node test/run.js && node test/organizer.test.js"
+    "test": "node test/run.js && node test/organizer.test.js && node test/player.test.js"
   },
   "author": "",
   "license": "UNLICENSED",

@@ -149,9 +149,9 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 .playlist-item .count { color: var(--text-dim); font-size: 10px; }
 .playlist-item .del-btn { opacity: 0; font-size: 10px; padding: 1px 5px; }
 .playlist-item:hover .del-btn { opacity: 1; }
-.playlist-item .rename-btn { opacity: 0; font-size: 11px; padding: 1px 5px; }
-.playlist-item:hover .rename-btn { opacity: 1; }
-.playlist-item .rename-btn:hover { color: var(--green); border-color: var(--green-dim); }
+.playlist-item .playlist-play-btn { opacity: 0; font-size: 10px; padding: 1px 6px; }
+.playlist-item:hover .playlist-play-btn { opacity: 1; }
+.playlist-item .playlist-play-btn:hover { color: var(--green); border-color: var(--green-dim); }
 .playlist-item-label { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .cover-thumb { flex: 0 0 auto; overflow: hidden; background: var(--bg); border: 1px solid var(--border); }
@@ -487,6 +487,8 @@ input[type="range"]::-webkit-slider-thumb {
 
 /* ---------- Tag chips (Song Options modal) ---------- */
 .tag-section { margin-bottom: 14px; }
+.file-genre-line { font-size: 10px; color: var(--text-dim); margin: 4px 0 8px; letter-spacing: 0.03em; line-height: 1.5; }
+.file-genre-value { color: var(--text); }
 .tag-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 10px; }
 .tag-chip {
   display: inline-flex;
