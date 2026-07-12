@@ -222,6 +222,22 @@ function updateCachedTrackTags(trackId) {
   return cachedTracks[idx];
 }
 
+/** Same as updateCachedTrackTags but for many tracks at once — reads
+ * getCustomTags() a single time rather than once per track. Returns the
+ * updated track objects for whichever of trackIds were actually found. */
+function updateCachedTracksTags(trackIds) {
+  const idSet = new Set(trackIds);
+  const allCustomTags = store.getCustomTags();
+  const updated = [];
+  cachedTracks = cachedTracks.map((t) => {
+    if (!idSet.has(t.id)) return t;
+    const next = { ...t, customTags: allCustomTags[t.id] || [] };
+    updated.push(next);
+    return next;
+  });
+  return updated;
+}
+
 ipcMain.handle('tags:add', async (_evt, { trackId, tag }) => {
   store.addCustomTag(trackId, tag);
   return updateCachedTrackTags(trackId);
@@ -230,4 +246,9 @@ ipcMain.handle('tags:add', async (_evt, { trackId, tag }) => {
 ipcMain.handle('tags:remove', async (_evt, { trackId, tag }) => {
   store.removeCustomTag(trackId, tag);
   return updateCachedTrackTags(trackId);
+});
+
+ipcMain.handle('tags:add-bulk', async (_evt, { trackIds, tag }) => {
+  store.addCustomTagToTracks(trackIds, tag);
+  return updateCachedTracksTags(trackIds);
 });

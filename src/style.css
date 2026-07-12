@@ -99,18 +99,27 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   overflow-y: auto;
 }
 .nav-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
   text-align: left;
   padding: 9px 10px;
   background: transparent;
   border: 1px solid transparent;
   font-size: 12px;
   letter-spacing: 0.05em;
+  cursor: pointer;
 }
+.nav-item-label { flex: 1 1 auto; }
 .nav-item.active {
   color: var(--green);
   border-color: var(--green-dim);
   background: linear-gradient(90deg, rgba(61,255,143,0.08), transparent);
 }
+.nav-item.playing-from .nav-item-label::before { content: '▶ '; color: var(--green); }
+.nav-play-btn { opacity: 0; font-size: 10px; padding: 2px 8px; flex: 0 0 auto; }
+.nav-item:hover .nav-play-btn { opacity: 1; }
 .nav-item[data-view="favourites"] { color: var(--magenta); }
 .nav-item[data-view="favourites"].active {
   border-color: var(--magenta-dim);
@@ -477,7 +486,26 @@ input[type="range"]::-webkit-slider-thumb {
   flex: 0 0 auto;
   margin-left: 8px;
 }
-.artist-summary-row:hover .artist-play-btn { opacity: 1; }
+.artist-tag-btn {
+  font-size: 10px;
+  padding: 2px 9px;
+  opacity: 0;
+  flex: 0 0 auto;
+  margin-left: 8px;
+}
+.artist-summary-row:hover .artist-play-btn,
+.artist-summary-row:hover .artist-tag-btn { opacity: 1; }
+
+.album-summary-row { display: flex; align-items: center; }
+.album-name-label { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.album-tag-btn {
+  font-size: 9px;
+  padding: 2px 8px;
+  opacity: 0;
+  flex: 0 0 auto;
+  margin-left: 8px;
+}
+.album-summary-row:hover .album-tag-btn { opacity: 1; }
 
 /* ---------- Danger modal (delete confirm) ---------- */
 .modal-box.danger { border-color: var(--magenta-dim); box-shadow: 0 0 24px rgba(255,47,176,0.15); }

@@ -17,10 +17,20 @@
   <div class="layout">
 
     <nav class="sidebar">
-      <button class="nav-item active" data-view="all">ALL TRACKS</button>
-      <button class="nav-item" data-view="artists">ARTISTS / ALBUMS</button>
-      <button class="nav-item" data-view="genres">GENRES</button>
-      <button class="nav-item" data-view="favourites">♥ FAVOURITES</button>
+      <div class="nav-item active" data-view="all">
+        <span class="nav-item-label">ALL TRACKS</span>
+        <button class="nav-play-btn" data-view="all" title="Play All Tracks">►</button>
+      </div>
+      <div class="nav-item" data-view="artists">
+        <span class="nav-item-label">ARTISTS / ALBUMS</span>
+      </div>
+      <div class="nav-item" data-view="genres">
+        <span class="nav-item-label">GENRES</span>
+      </div>
+      <div class="nav-item" data-view="favourites">
+        <span class="nav-item-label">♥ FAVOURITES</span>
+        <button class="nav-play-btn" data-view="favourites" title="Play Favourites">►</button>
+      </div>
 
       <div class="sidebar-section">
         <div class="sidebar-label">
