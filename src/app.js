@@ -31,6 +31,7 @@ const FAVOURITES_PLAYLIST_ID = 'favourites';
     nowTitle: document.getElementById('now-title'),
     nowArtist: document.getElementById('now-artist'),
     nowSource: document.getElementById('now-source'),
+    nowFavBtn: document.getElementById('now-fav-btn'),
     reels: document.getElementById('reels'),
     btnPlayPause: document.getElementById('btn-playpause'),
     btnShuffle: document.getElementById('btn-shuffle'),
@@ -279,6 +280,26 @@ const FAVOURITES_PLAYLIST_ID = 'favourites';
       wireDragReorder(item, pl.id);
       el.playlistList.appendChild(item);
     }
+    updateNowFavButton();
+  }
+
+  /** Keeps the heart button next to the now-playing track in sync with
+   * Favourites membership. Called from renderPlaylistSidebar() rather than
+   * separately at every place favourite status can change (Song Options,
+   * bulk options, this button itself) — one place, can't go stale. */
+  function updateNowFavButton() {
+    const track = player.currentTrack();
+    if (!track) {
+      el.nowFavBtn.textContent = '♡';
+      el.nowFavBtn.classList.remove('active');
+      el.nowFavBtn.disabled = true;
+      return;
+    }
+    el.nowFavBtn.disabled = false;
+    const favPlaylist = state.playlists.find((p) => p.id === FAVOURITES_PLAYLIST_ID);
+    const isFav = favPlaylist ? favPlaylist.trackIds.includes(track.id) : false;
+    el.nowFavBtn.textContent = isFav ? '♥' : '♡';
+    el.nowFavBtn.classList.toggle('active', isFav);
   }
 
   let dragSourceId = null;
@@ -577,17 +598,17 @@ const FAVOURITES_PLAYLIST_ID = 'favourites';
         startFreshQueue(allArtistTracks, { type: 'artist', name: artistEntry.artist });
       });
 
-      const tagBtn = document.createElement('button');
-      tagBtn.className = 'artist-tag-btn mini-btn';
-      tagBtn.textContent = 'TAG';
-      tagBtn.title = `Add a genre tag to every ${artistEntry.artist} track`;
-      tagBtn.addEventListener('click', (e) => {
+      const optionsBtn = document.createElement('button');
+      optionsBtn.className = 'artist-options-btn mini-btn';
+      optionsBtn.textContent = '⋮';
+      optionsBtn.title = `Options for ${artistEntry.artist}`;
+      optionsBtn.addEventListener('click', (e) => {
         e.preventDefault();
         e.stopPropagation();
-        openBulkTagModal(artistEntry.artist, allArtistTracks.map((t) => t.id));
+        openBulkOptionsModal(artistEntry.artist, allArtistTracks.map((t) => t.id));
       });
 
-      summary.append(summaryLabel, playBtn, tagBtn);
+      summary.append(summaryLabel, playBtn, optionsBtn);
       artistNode.appendChild(summary);
 
       for (const album of visibleAlbums) {
@@ -599,17 +620,27 @@ const FAVOURITES_PLAYLIST_ID = 'favourites';
         albumLabel.className = 'album-name-label';
         albumLabel.textContent = `${album.album} (${album.tracks.length})`;
 
-        const albumTagBtn = document.createElement('button');
-        albumTagBtn.className = 'album-tag-btn mini-btn';
-        albumTagBtn.textContent = 'TAG';
-        albumTagBtn.title = `Add a genre tag to every track in ${album.album}`;
-        albumTagBtn.addEventListener('click', (e) => {
+        const albumPlayBtn = document.createElement('button');
+        albumPlayBtn.className = 'album-play-btn mini-btn';
+        albumPlayBtn.textContent = '► PLAY';
+        albumPlayBtn.title = `Play ${album.album}`;
+        albumPlayBtn.addEventListener('click', (e) => {
           e.preventDefault();
           e.stopPropagation();
-          openBulkTagModal(`${artistEntry.artist} / ${album.album}`, album.tracks.map((t) => t.id));
+          startFreshQueue(album.tracks, { type: 'album', artist: artistEntry.artist, album: album.album });
         });
 
-        albumSummary.append(albumLabel, albumTagBtn);
+        const albumOptionsBtn = document.createElement('button');
+        albumOptionsBtn.className = 'album-options-btn mini-btn';
+        albumOptionsBtn.textContent = '⋮';
+        albumOptionsBtn.title = `Options for ${album.album}`;
+        albumOptionsBtn.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          openBulkOptionsModal(`${artistEntry.artist} / ${album.album}`, album.tracks.map((t) => t.id));
+        });
+
+        albumSummary.append(albumLabel, albumPlayBtn, albumOptionsBtn);
         albumNode.appendChild(albumSummary);
         // queueList is album.tracks (full), rendered rows are visibleTracks
         // (filtered) — clicking a filtered row still queues the whole album.
@@ -635,8 +666,23 @@ const FAVOURITES_PLAYLIST_ID = 'favourites';
       const genreNode = document.createElement('details');
       genreNode.className = 'genre-node';
       const summary = document.createElement('summary');
+      summary.className = 'genre-summary-row';
       const label = genreEntry.genre === 'UNTAGGED' ? 'NO GENRE TAG' : genreEntry.genre;
-      summary.textContent = `${label} (${genreEntry.tracks.length})`;
+      const summaryLabel = document.createElement('span');
+      summaryLabel.className = 'genre-name-label';
+      summaryLabel.textContent = `${label} (${genreEntry.tracks.length})`;
+
+      const playBtn = document.createElement('button');
+      playBtn.className = 'genre-play-btn mini-btn';
+      playBtn.textContent = '► PLAY';
+      playBtn.title = `Play all ${label} tracks`;
+      playBtn.addEventListener('click', (e) => {
+        e.preventDefault(); // don't trigger the <details> disclosure toggle
+        e.stopPropagation();
+        startFreshQueue(genreEntry.tracks, { type: 'genre', genre: genreEntry.genre });
+      });
+
+      summary.append(summaryLabel, playBtn);
       genreNode.appendChild(summary);
       visibleTracks.forEach((t, i) => genreNode.appendChild(makeTrackRow(t, i, genreEntry.tracks)));
       el.viewRoot.appendChild(genreNode);
@@ -800,31 +846,81 @@ const FAVOURITES_PLAYLIST_ID = 'favourites';
    * once — the per-track Song Options modal only tags one track, which is
    * impractical for classifying a whole folder. trackIds is resolved by the
    * caller (all of an artist's tracks across every album, or one album's). */
-  function openBulkTagModal(scopeLabel, trackIds) {
-    renderBulkTagModal(scopeLabel, trackIds);
+  function openBulkOptionsModal(scopeLabel, trackIds) {
+    renderBulkOptionsModal(scopeLabel, trackIds);
   }
 
-  function renderBulkTagModal(scopeLabel, trackIds) {
+  function renderBulkOptionsModal(scopeLabel, trackIds) {
+    const tracks = trackIds.map((id) => state.tracksById.get(id)).filter(Boolean);
+    const tagCounts = new Map();
+    for (const t of tracks) {
+      for (const tag of t.customTags || []) tagCounts.set(tag, (tagCounts.get(tag) || 0) + 1);
+    }
+    const sortedTags = [...tagCounts.keys()].sort((a, b) => a.localeCompare(b));
+    const tagsHtml = sortedTags.length
+      ? sortedTags
+          .map(
+            (tag) =>
+              `<span class="tag-chip">${escapeHtml(tag)} <span class="tag-chip-count">${tagCounts.get(tag)}/${tracks.length}</span> <button class="tag-remove-btn" data-tag="${escapeHtml(tag)}">×</button></span>`
+          )
+          .join('')
+      : '<span class="tag-chip-empty">none yet</span>';
+
     const html = `
-      <h3>ADD GENRE TAG</h3>
-      <p style="font-size:11px;color:var(--text-dim);margin:0 0 14px;line-height:1.5;">
-        Applies to all ${trackIds.length} track${trackIds.length === 1 ? '' : 's'} in
-        <strong style="color:var(--text)">${escapeHtml(scopeLabel)}</strong>.
-      </p>
-      ${tagAutocompleteHtml()}
-      <div class="modal-actions"><button id="bulk-tag-close">CLOSE</button></div>
+      <h3>${escapeHtml(scopeLabel)}</h3>
+      <p style="font-size:11px;color:var(--text-dim);margin:0 0 14px;">${trackIds.length} track${trackIds.length === 1 ? '' : 's'}</p>
+      <div class="modal-list">
+        <button id="bulk-opt-queue">ADD ALL TO QUEUE</button>
+        <button id="bulk-opt-fav">ADD ALL TO FAVOURITES</button>
+      </div>
+      <div class="tag-section">
+        <div class="sidebar-label"><span>GENRE TAGS</span></div>
+        <div class="tag-chips">${tagsHtml}</div>
+        ${tagAutocompleteHtml()}
+      </div>
+      <div class="modal-actions"><button id="bulk-opt-close">CLOSE</button></div>
     `;
     const existingBox = el.modalRoot.querySelector('.modal-box');
     if (existingBox) {
       existingBox.innerHTML = html;
-      wireBulkTagModal(existingBox, trackIds);
+      wireBulkOptionsModal(existingBox, scopeLabel, trackIds);
     } else {
-      openModal(html, (box) => wireBulkTagModal(box, trackIds));
+      openModal(html, (box) => wireBulkOptionsModal(box, scopeLabel, trackIds));
     }
   }
 
-  function wireBulkTagModal(box, trackIds) {
-    box.querySelector('#bulk-tag-close').addEventListener('click', closeModal);
+  function wireBulkOptionsModal(box, scopeLabel, trackIds) {
+    box.querySelector('#bulk-opt-close').addEventListener('click', closeModal);
+
+    box.querySelector('#bulk-opt-queue').addEventListener('click', () => {
+      const tracks = trackIds.map((id) => state.tracksById.get(id)).filter(Boolean);
+      // In order, one at a time: each addToQueue call inserts right after
+      // the previous one, so the whole batch lands as a consecutive block
+      // right after the current track — same "play next" semantics as a
+      // single track, just repeated.
+      tracks.forEach((t) => player.addToQueue(t));
+      showToast(`QUEUED ${tracks.length} TRACK${tracks.length === 1 ? '' : 'S'}`);
+      closeModal();
+    });
+
+    box.querySelector('#bulk-opt-fav').addEventListener('click', async () => {
+      await window.k7.addTracksToPlaylist(FAVOURITES_PLAYLIST_ID, trackIds);
+      state.playlists = await window.k7.getPlaylists();
+      renderPlaylistSidebar();
+      if (state.view.type === 'playlist' && state.view.id === FAVOURITES_PLAYLIST_ID) renderCurrentView();
+      showToast(`ADDED ${trackIds.length} TRACK${trackIds.length === 1 ? '' : 'S'} TO FAVOURITES`);
+    });
+
+    box.querySelectorAll('.tag-remove-btn').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const updatedTracks = await window.k7.removeCustomTagFromTracks(trackIds, btn.dataset.tag);
+        updatedTracks.forEach(applyUpdatedTrack);
+        renderCurrentView();
+        showToast(`REMOVED TAG: ${btn.dataset.tag}`);
+        renderBulkOptionsModal(scopeLabel, trackIds);
+      });
+    });
+
     wireTagAutocomplete(box, {
       // Not excluding any tags here (unlike the per-track modal): tracks in
       // the same folder can each have different existing tags already, so
@@ -835,7 +931,7 @@ const FAVOURITES_PLAYLIST_ID = 'favourites';
         updatedTracks.forEach(applyUpdatedTrack);
         renderCurrentView();
         showToast(`TAGGED ${trackIds.length} TRACK${trackIds.length === 1 ? '' : 'S'}: ${tag}`);
-        box.querySelector('#new-tag-input').value = '';
+        renderBulkOptionsModal(scopeLabel, trackIds);
       },
     });
   }
@@ -951,7 +1047,7 @@ const FAVOURITES_PLAYLIST_ID = 'favourites';
 
     const renderSuggestions = () => {
       const query = input.value.trim().toLowerCase();
-      const candidates = getAllKnownCustomTags().filter((t) => !excludeTags.has(t));
+      const candidates = getAllKnownTags().filter((t) => !excludeTags.has(t));
       const matches = query ? candidates.filter((t) => t.toLowerCase().includes(query)) : candidates;
       if (matches.length === 0) {
         suggestBox.classList.remove('visible');
@@ -979,9 +1075,14 @@ const FAVOURITES_PLAYLIST_ID = 'favourites';
     });
   }
 
-  function getAllKnownCustomTags() {
+  /** Every distinct tag value in use anywhere in the library — both file
+   * genre tags and custom tags — powering the autocomplete suggestion
+   * dropdown. Typing "ro" should surface "Rock" (a file genre) and
+   * "Alternative Rock" (a custom tag) side by side, not just custom ones. */
+  function getAllKnownTags() {
     const tags = new Set();
     for (const t of state.allTracks) {
+      if (t.genre) tags.add(t.genre);
       for (const tag of t.customTags || []) tags.add(tag);
     }
     return [...tags].sort((a, b) => a.localeCompare(b));
@@ -1073,6 +1174,7 @@ const FAVOURITES_PLAYLIST_ID = 'favourites';
     el.nowArtist.textContent = `${track.artist} — ${track.album}`;
     document.querySelectorAll('.track-row.playing').forEach((r) => r.classList.remove('playing'));
     document.querySelectorAll(`.track-row[data-track-id="${track.id}"]`).forEach((r) => r.classList.add('playing'));
+    updateNowFavButton();
   };
 
   player.onPlayStateChange = (isPlaying) => {
@@ -1183,6 +1285,8 @@ const FAVOURITES_PLAYLIST_ID = 'favourites';
     if (!a || !b || a.type !== b.type) return false;
     if (a.type === 'playlist') return a.id === b.id;
     if (a.type === 'artist') return a.name === b.name;
+    if (a.type === 'album') return a.artist === b.artist && a.album === b.album;
+    if (a.type === 'genre') return a.genre === b.genre;
     return true; // all / artists / genres have no further discriminator
   }
 
@@ -1249,9 +1353,20 @@ const FAVOURITES_PLAYLIST_ID = 'favourites';
       const artistEntry = index.find((a) => a.artist === view.name);
       return artistEntry ? artistEntry.albums.flatMap((al) => al.tracks) : [];
     }
+    if (view.type === 'album') {
+      const index = await window.k7.getArtistIndex();
+      const artistEntry = index.find((a) => a.artist === view.artist);
+      const albumEntry = artistEntry?.albums.find((al) => al.album === view.album);
+      return albumEntry ? albumEntry.tracks : [];
+    }
     if (view.type === 'artists') {
       const index = await window.k7.getArtistIndex();
       return index.flatMap((a) => a.albums.flatMap((al) => al.tracks));
+    }
+    if (view.type === 'genre') {
+      const index = await window.k7.getGenreIndex();
+      const genreEntry = index.find((g) => g.genre === view.genre);
+      return genreEntry ? genreEntry.tracks : [];
     }
     if (view.type === 'genres') {
       const index = await window.k7.getGenreIndex();
@@ -1268,7 +1383,9 @@ const FAVOURITES_PLAYLIST_ID = 'favourites';
     if (!view) return '';
     if (view.type === 'all') return 'ALL TRACKS';
     if (view.type === 'artist') return view.name;
+    if (view.type === 'album') return `${view.artist} / ${view.album}`;
     if (view.type === 'artists') return 'ARTISTS / ALBUMS';
+    if (view.type === 'genre') return view.genre === 'UNTAGGED' ? 'NO GENRE TAG' : view.genre;
     if (view.type === 'genres') return 'GENRES';
     if (view.type === 'playlist') {
       const pl = state.playlists.find((p) => p.id === view.id);
@@ -1310,6 +1427,18 @@ const FAVOURITES_PLAYLIST_ID = 'favourites';
   });
   document.getElementById('btn-next').addEventListener('click', () => player.next());
   document.getElementById('btn-prev').addEventListener('click', () => player.prev());
+
+  el.nowFavBtn.addEventListener('click', async () => {
+    const track = player.currentTrack();
+    if (!track) return;
+    const favPlaylist = state.playlists.find((p) => p.id === FAVOURITES_PLAYLIST_ID);
+    const isFav = favPlaylist ? favPlaylist.trackIds.includes(track.id) : false;
+    if (isFav) await window.k7.removeTrackFromPlaylist(FAVOURITES_PLAYLIST_ID, track.id);
+    else await window.k7.addTracksToPlaylist(FAVOURITES_PLAYLIST_ID, [track.id]);
+    state.playlists = await window.k7.getPlaylists();
+    renderPlaylistSidebar(); // also refreshes this same button, see updateNowFavButton
+    if (state.view.type === 'playlist' && state.view.id === FAVOURITES_PLAYLIST_ID) renderCurrentView();
+  });
   document.getElementById('btn-shuffle').addEventListener('click', () => {
     player.setShuffle(!player.shuffleOn);
     window.k7.saveSettings({ shuffle: player.shuffleOn });

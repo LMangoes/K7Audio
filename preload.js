@@ -30,4 +30,5 @@ contextBridge.exposeInMainWorld('k7', {
   addCustomTag: (trackId, tag) => ipcRenderer.invoke('tags:add', { trackId, tag }),
   removeCustomTag: (trackId, tag) => ipcRenderer.invoke('tags:remove', { trackId, tag }),
   addCustomTagToTracks: (trackIds, tag) => ipcRenderer.invoke('tags:add-bulk', { trackIds, tag }),
+  removeCustomTagFromTracks: (trackIds, tag) => ipcRenderer.invoke('tags:remove-bulk', { trackIds, tag }),
 });

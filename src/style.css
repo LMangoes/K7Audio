@@ -352,7 +352,19 @@ details.album-node > summary::before { content: '· '; }
 .marquee-gap { display: inline-block; width: var(--marquee-gap, 40px); }
 .marquee.scrolling { animation-name: marquee-scroll; animation-timing-function: linear; animation-iteration-count: infinite; }
 @keyframes marquee-scroll { from { transform: translateX(0); } to { transform: translateX(-50%); } }
-.now-artist { font-size: 11px; color: var(--text-dim); margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.now-artist-row { display: flex; align-items: center; gap: 6px; margin-top: 3px; min-width: 0; }
+.now-artist { font-size: 11px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1 1 auto; min-width: 0; }
+.now-fav-btn {
+  flex: 0 0 auto;
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 13px;
+  padding: 0 2px;
+  line-height: 1;
+}
+.now-fav-btn:hover { color: var(--magenta); border: none; }
+.now-fav-btn.active { color: var(--magenta); }
 .now-source { font-size: 9px; color: var(--magenta); margin-top: 3px; letter-spacing: 0.08em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .transport-center { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
@@ -486,26 +498,45 @@ input[type="range"]::-webkit-slider-thumb {
   flex: 0 0 auto;
   margin-left: 8px;
 }
-.artist-tag-btn {
-  font-size: 10px;
-  padding: 2px 9px;
+.artist-options-btn {
+  font-size: 12px;
+  padding: 2px 8px;
   opacity: 0;
   flex: 0 0 auto;
-  margin-left: 8px;
+  margin-left: 6px;
 }
 .artist-summary-row:hover .artist-play-btn,
-.artist-summary-row:hover .artist-tag-btn { opacity: 1; }
+.artist-summary-row:hover .artist-options-btn { opacity: 1; }
 
 .album-summary-row { display: flex; align-items: center; }
 .album-name-label { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.album-tag-btn {
+.album-play-btn {
   font-size: 9px;
   padding: 2px 8px;
   opacity: 0;
   flex: 0 0 auto;
   margin-left: 8px;
 }
-.album-summary-row:hover .album-tag-btn { opacity: 1; }
+.album-options-btn {
+  font-size: 11px;
+  padding: 2px 7px;
+  opacity: 0;
+  flex: 0 0 auto;
+  margin-left: 6px;
+}
+.album-summary-row:hover .album-play-btn,
+.album-summary-row:hover .album-options-btn { opacity: 1; }
+
+.genre-summary-row { display: flex; align-items: center; }
+.genre-name-label { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.genre-play-btn {
+  font-size: 10px;
+  padding: 2px 9px;
+  opacity: 0;
+  flex: 0 0 auto;
+  margin-left: 8px;
+}
+.genre-summary-row:hover .genre-play-btn { opacity: 1; }
 
 /* ---------- Danger modal (delete confirm) ---------- */
 .modal-box.danger { border-color: var(--magenta-dim); box-shadow: 0 0 24px rgba(255,47,176,0.15); }
@@ -530,6 +561,7 @@ input[type="range"]::-webkit-slider-thumb {
   letter-spacing: 0.04em;
 }
 .tag-chip-empty { font-size: 11px; color: var(--text-dim); }
+.tag-chip-count { color: var(--text-dim); font-size: 9px; }
 .tag-remove-btn { border: none; background: transparent; color: var(--text-dim); font-size: 10px; padding: 0 2px; }
 .tag-remove-btn:hover { color: var(--magenta); border: none; }
 .tag-add-row { display: flex; gap: 6px; }

@@ -252,3 +252,8 @@ ipcMain.handle('tags:add-bulk', async (_evt, { trackIds, tag }) => {
   store.addCustomTagToTracks(trackIds, tag);
   return updateCachedTracksTags(trackIds);
 });
+
+ipcMain.handle('tags:remove-bulk', async (_evt, { trackIds, tag }) => {
+  store.removeCustomTagFromTracks(trackIds, tag);
+  return updateCachedTracksTags(trackIds);
+});
