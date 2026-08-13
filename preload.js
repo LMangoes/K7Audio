@@ -8,6 +8,7 @@ contextBridge.exposeInMainWorld('k7', {
   pickLibraryFolder: () => ipcRenderer.invoke('library:pick-folder'),
   checkOrganization: (folderPath) => ipcRenderer.invoke('library:check-organization', folderPath),
   organizeLibrary: (folderPath) => ipcRenderer.invoke('library:organize', folderPath),
+  deleteDuplicatesFolder: (duplicatesDir) => ipcRenderer.invoke('library:delete-duplicates', duplicatesDir),
   confirmAddFolder: (folderPath) => ipcRenderer.invoke('library:confirm-add-folder', folderPath),
   removeLibraryFolder: (folderPath) => ipcRenderer.invoke('library:remove-folder', folderPath),
   sortAllSongs: (mode) => ipcRenderer.invoke('library:sort-all-songs', mode),

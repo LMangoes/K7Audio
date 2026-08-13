@@ -154,6 +154,14 @@ ipcMain.handle('library:organize', async (_evt, folderPath) => {
   return organizeLibrary(folderPath);
 });
 
+ipcMain.handle('library:delete-duplicates', async (_evt, duplicatesDir) => {
+  if (path.basename(duplicatesDir) !== 'duplicates') {
+    throw new Error('refusing to delete: not a duplicates folder');
+  }
+  fs.rmSync(duplicatesDir, { recursive: true, force: true });
+  return { deleted: true };
+});
+
 ipcMain.handle('library:confirm-add-folder', async (_evt, folderPath) => {
   const settings = store.getSettings();
   const next = [...new Set([...settings.libraryPaths, folderPath])];

@@ -77,15 +77,9 @@ const FAVOURITES_PLAYLIST_ID = 'favourites';
     <rect x="14" y="72" width="72" height="6" rx="3" fill="#ff2fb0"/>
   </svg>`;
 
-  const PLACEHOLDER_HEART_SVG = `<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
-    <rect width="100" height="100" rx="14" fill="#111318"/>
-    <path d="M50 78 L24 52 C12 40 12 22 26 16 C36 12 46 17 50 27 C54 17 64 12 74 16 C88 22 88 40 76 52 Z" fill="#ff2fb0"/>
-  </svg>`;
-
-  /** Cover priority: explicit playlist cover -> first track's folder art (or,
-   * for Favourites, a fixed heart identity instead — see resolvePlaylistCover)
-   * -> generic placeholder. */
-  function makeCoverEl(coverUrl, sizeClass, placeholder = 'cassette') {
+  /** Cover priority: explicit playlist cover -> first track's folder art
+   * (Favourites skips this tier — see resolvePlaylistCover) -> the K7 mark. */
+  function makeCoverEl(coverUrl, sizeClass) {
     const wrap = document.createElement('div');
     wrap.className = `cover-thumb ${sizeClass}`;
     if (coverUrl) {
@@ -94,16 +88,16 @@ const FAVOURITES_PLAYLIST_ID = 'favourites';
       img.alt = '';
       wrap.appendChild(img);
     } else {
-      wrap.innerHTML = placeholder === 'heart' ? PLACEHOLDER_HEART_SVG : PLACEHOLDER_COVER_SVG;
+      wrap.innerHTML = PLACEHOLDER_COVER_SVG;
     }
     return wrap;
   }
 
   function resolvePlaylistCover(pl) {
     if (pl.coverUrl) return pl.coverUrl;
-    // Favourites gets a stable heart identity rather than borrowing whichever
-    // track happens to be first — that would change unpredictably as tracks
-    // are favourited/unfavourited, unlike a normal playlist's cover.
+    // Favourites gets a stable K7-mark identity rather than borrowing
+    // whichever track happens to be first — that would change unpredictably
+    // as tracks are favourited/unfavourited, unlike a normal playlist's cover.
     if (pl.id === FAVOURITES_PLAYLIST_ID) return null;
     const firstTrack = pl.trackIds.map((id) => state.tracksById.get(id)).find((t) => t?.coverUrl);
     return firstTrack ? firstTrack.coverUrl : null;
@@ -160,6 +154,34 @@ const FAVOURITES_PLAYLIST_ID = 'favourites';
       el.scanStatus.textContent = 'SCAN FAILED';
       el.scanStatus.classList.add('error');
       console.error(err);
+      return;
+    }
+    await checkLibraryPathsForOrganization();
+  }
+
+  async function refreshScanOnly() {
+    try {
+      applyScanData(await window.k7.scanLibrary());
+    } catch (err) {
+      el.scanStatus.textContent = 'SCAN FAILED';
+      el.scanStatus.classList.add('error');
+      console.error(err);
+    }
+  }
+
+  /** Checks every configured library folder for loose/unorganized files
+   * after a rescan, prompting for the first one found. Declining refreshes
+   * via refreshScanOnly() rather than looping back through this same check
+   * (re-checking immediately after a decline would just re-prompt for the
+   * identical folder forever). Organizing calls rescan() again, which
+   * re-checks and surfaces the next messy folder, if any, one at a time. */
+  async function checkLibraryPathsForOrganization() {
+    for (const p of state.settings.libraryPaths || []) {
+      const check = await window.k7.checkOrganization(p);
+      if (!check.isOrganized) {
+        openOrganizePromptModal(p, check, refreshScanOnly, rescan);
+        return;
+      }
     }
   }
 
@@ -236,7 +258,7 @@ const FAVOURITES_PLAYLIST_ID = 'favourites';
       if (state.view.type === 'playlist' && state.view.id === pl.id) item.classList.add('active');
       if (state.activeQueueView?.type === 'playlist' && state.activeQueueView.id === pl.id) item.classList.add('playing-from');
 
-      const cover = makeCoverEl(resolvePlaylistCover(pl), 'cover-xs', pl.id === FAVOURITES_PLAYLIST_ID ? 'heart' : 'cassette');
+      const cover = makeCoverEl(resolvePlaylistCover(pl), 'cover-xs');
       const label = document.createElement('span');
       label.className = 'playlist-item-label';
       label.textContent = pl.name;
@@ -508,7 +530,7 @@ const FAVOURITES_PLAYLIST_ID = 'favourites';
   function makePlaylistCoverHeader(pl) {
     const header = document.createElement('div');
     header.className = 'playlist-cover-header';
-    header.appendChild(makeCoverEl(resolvePlaylistCover(pl), 'cover-lg', pl.id === FAVOURITES_PLAYLIST_ID ? 'heart' : 'cassette'));
+    header.appendChild(makeCoverEl(resolvePlaylistCover(pl), 'cover-lg'));
 
     const meta = document.createElement('div');
     meta.className = 'playlist-cover-meta';
@@ -1205,7 +1227,8 @@ const FAVOURITES_PLAYLIST_ID = 'favourites';
 
     const check = await window.k7.checkOrganization(picked.path);
     if (!check.isOrganized) {
-      openOrganizePromptModal(picked.path, check);
+      const proceed = () => finishAddFolder(picked.path);
+      openOrganizePromptModal(picked.path, check, proceed, proceed);
       return;
     }
     await finishAddFolder(picked.path);
@@ -1221,7 +1244,7 @@ const FAVOURITES_PLAYLIST_ID = 'favourites';
     }
   }
 
-  function openOrganizePromptModal(folderPath, check) {
+  function openOrganizePromptModal(folderPath, check, onSkip, onOrganized) {
     const count = check.looseAudioFiles.length;
     const html = `
       <h3>LIBRARY NOT ORGANISED</h3>
@@ -1239,27 +1262,33 @@ const FAVOURITES_PLAYLIST_ID = 'favourites';
     openModal(html, (box) => {
       box.querySelector('#org-no').addEventListener('click', async () => {
         closeModal();
-        await finishAddFolder(folderPath);
+        await onSkip();
       });
       box.querySelector('#org-yes').addEventListener('click', async () => {
         closeModal();
-        await runOrganizeThenAdd(folderPath);
+        await runOrganizeThenContinue(folderPath, onOrganized);
       });
     });
   }
 
-  async function runOrganizeThenAdd(folderPath) {
+  async function runOrganizeThenContinue(folderPath, onDone) {
     el.scanStatus.textContent = 'ORGANISING...';
     el.scanStatus.classList.remove('error');
     const report = await window.k7.organizeLibrary(folderPath);
     showToast(`ORGANISED: ${report.moved.length} FILE${report.moved.length === 1 ? '' : 'S'} MOVED`);
+
     if (report.unsupported.length > 0) {
-      openUnsupportedFilesModal(report);
+      openUnsupportedFilesModal(report, () => {
+        if (report.duplicates.length > 0) openDuplicatesFoundModal(report);
+      });
+    } else if (report.duplicates.length > 0) {
+      openDuplicatesFoundModal(report);
     }
-    await finishAddFolder(folderPath);
+
+    await onDone();
   }
 
-  function openUnsupportedFilesModal(report) {
+  function openUnsupportedFilesModal(report, onClose) {
     const items = report.unsupported
       .map((u) => `<div class="unsupported-row">${escapeHtml(baseName(u.from))}<span class="unsupported-reason">${escapeHtml(u.reason)}</span></div>`)
       .join('');
@@ -1272,7 +1301,51 @@ const FAVOURITES_PLAYLIST_ID = 'favourites';
       <div class="modal-list unsupported-list">${items}</div>
       <div class="modal-actions"><button id="unsupported-close">CLOSE</button></div>
     `;
-    openModal(html, (box) => box.querySelector('#unsupported-close').addEventListener('click', closeModal));
+    openModal(html, (box) =>
+      box.querySelector('#unsupported-close').addEventListener('click', () => {
+        closeModal();
+        if (onClose) onClose();
+      })
+    );
+  }
+
+  function openDuplicatesFoundModal(report) {
+    const items = report.duplicates
+      .map(
+        (d) =>
+          `<div class="unsupported-row">${escapeHtml(baseName(d.from))}<span class="unsupported-reason">dup of ${escapeHtml(baseName(d.duplicateOf))}</span></div>`
+      )
+      .join('');
+    const html = `
+      <h3>${report.duplicates.length} DUPLICATE${report.duplicates.length === 1 ? '' : 'S'} FOUND</h3>
+      <p style="font-size:11px;color:var(--text-dim);margin:0 0 10px;line-height:1.5;">
+        Byte-identical to a file already in your library. Moved to
+        <strong style="color:var(--text);">${escapeHtml(report.duplicatesDir || 'duplicates/')}</strong> —
+        your main library wasn't touched.
+      </p>
+      <div class="modal-list unsupported-list">${items}</div>
+      <div class="modal-actions">
+        <button id="dup-keep">KEEP</button>
+        <button id="dup-delete" class="danger-btn">DELETE DUPLICATES</button>
+      </div>
+    `;
+    openModal(
+      html,
+      (box) => {
+        box.querySelector('#dup-keep').addEventListener('click', closeModal);
+        box.querySelector('#dup-delete').addEventListener('click', () => {
+          closeModal();
+          openConfirmModal(
+            `Permanently delete the duplicates folder and its ${report.duplicates.length} file${report.duplicates.length === 1 ? '' : 's'}? This cannot be undone.`,
+            async () => {
+              await window.k7.deleteDuplicatesFolder(report.duplicatesDir);
+              showToast('DUPLICATES DELETED');
+            }
+          );
+        });
+      },
+      'danger'
+    );
   }
 
   // ---------- Event wiring ----------
