@@ -7,18 +7,13 @@
  * has to render an at-rest (all-zero) state before that.
  */
 const BAR_COUNT = 32;
-/** Resting profile (centre = bass, tallest) so the bars read as an idle equaliser instead of vanishing when paused. */
-const idleLevel = (j, half) => 0.1 + 0.32 * Math.pow(1 - j / half, 1.5);
 
 class K7Visualizer {
   constructor(canvas, player) {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d');
     this.player = player;
-    this.levels = Array.from({ length: BAR_COUNT }, (_, i) => {
-      const half = BAR_COUNT / 2;
-      return idleLevel(i < half ? half - 1 - i : i - half, half);
-    });
+    this.levels = new Array(BAR_COUNT).fill(0);
     this.peaks = new Array(BAR_COUNT).fill(0);
 
     this._resize();
@@ -41,8 +36,8 @@ class K7Visualizer {
 
     const data = this.player.audio.paused ? null : this.player.getFrequencyData();
 
+    const gap = Math.max(1, w * 0.006);
     const barWidth = w / BAR_COUNT;
-    const gap = barWidth * 0.24;
     const half = BAR_COUNT / 2;
 
     const gradient = ctx.createLinearGradient(0, h, 0, 0);
@@ -52,7 +47,7 @@ class K7Visualizer {
     for (let j = 0; j < half; j++) {
       // Sample every other bin (0,2,4,...) so the half-count mirror still
       // spans the full bass-to-treble range instead of only the lower half.
-      const target = Math.max(idleLevel(j, half), data ? data[j * 2] / 255 : 0);
+      const target = data ? data[j * 2] / 255 : 0;
 
       for (const slot of [half - 1 - j, half + j]) {
         const prev = this.levels[slot];

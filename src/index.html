@@ -12,11 +12,6 @@
   <header class="titlebar">
     <span class="brand">K7<span class="brand-accent">/</span>AUDIO</span>
     <span class="brand-sub">LOCAL LIBRARY PLAYER</span>
-    <div class="hud-rule" aria-hidden="true">
-      <span class="hud-rule-l"></span>
-      <svg class="hud-slash" viewBox="0 0 62 28"><path d="M2 28 L18 0 M16 28 L32 0 M30 28 L46 0 M44 28 L60 0"/></svg>
-      <span class="hud-rule-r"></span>
-    </div>
   </header>
 
   <div class="layout">
@@ -37,8 +32,6 @@
         <button class="nav-play-btn" data-view="favourites" title="Play Favourites">►</button>
       </div>
 
-      <div class="hud-divider"></div>
-
       <div class="sidebar-section">
         <div class="sidebar-label">
           <span>PLAYLISTS</span>
@@ -46,8 +39,6 @@
         </div>
         <div id="playlist-list" class="playlist-list"></div>
       </div>
-
-      <div class="hud-divider"></div>
 
       <div class="sidebar-footer">
         <div class="sidebar-label"><span>LIBRARY FOLDERS</span></div>
@@ -64,7 +55,7 @@
       <div class="content-header">
         <h2 id="view-title">ALL TRACKS</h2>
         <div class="content-tools">
-          <button id="settings-btn" class="mini-btn" title="Settings" aria-label="Settings"><i></i><i></i><i></i></button>
+          <button id="settings-btn" class="mini-btn" title="Settings">⋮</button>
           <div class="search-wrap">
             <input id="search-input" class="search-input" type="text" placeholder="FILTER TRACKS / GENRE..." />
             <button id="search-clear" class="search-clear" title="Clear filter" aria-label="Clear filter">×</button>
@@ -96,13 +87,6 @@
         <button class="now-fav-btn" id="now-fav-btn" title="Add to Favourites">♡</button>
       </div>
       <div class="now-source" id="now-source"></div>
-    </div>
-
-    <div class="transport-sep" aria-hidden="true">
-      <svg viewBox="0 0 28 133" preserveAspectRatio="xMinYMid meet">
-        <path class="line" d="M4 0 V133 M4 36 L24 52 V81 L4 97"/>
-        <path class="core" d="M10 58 L19 64 V69 L10 75 Z"/>
-      </svg>
     </div>
 
     <div class="transport-center">
