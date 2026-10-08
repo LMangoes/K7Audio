@@ -49,6 +49,15 @@ const FAVOURITES_PLAYLIST_ID = 'favourites';
   const audioEl = document.getElementById('audio-el');
   const player = new K7Player(audioEl);
   new K7Visualizer(document.getElementById('visualizer-canvas'), player);
+
+  // Row gradient is viewport-fixed (see style.css); keep it aligned to the list area.
+  const syncListGradient = () => {
+    const r = el.viewRoot.getBoundingClientRect();
+    document.documentElement.style.setProperty('--list-top', `${r.top}px`);
+    document.documentElement.style.setProperty('--list-h', `${r.height}px`);
+  };
+  new ResizeObserver(syncListGradient).observe(el.viewRoot);
+  syncListGradient();
   let seekDragging = false;
 
   function fmtTime(sec) {
