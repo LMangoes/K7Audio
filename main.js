@@ -4,8 +4,8 @@ const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { pathToFileURL } = require('url');
-const { scanLibrary, buildArtistAlbumIndex, buildGenreIndex, sortAllSongs } = require('./lib/scanner');
-const { checkOrganization, organizeLibrary } = require('./lib/organizer');
+const { scanLibrary, buildArtistAlbumIndex, buildGenreIndex, sortAllSongs, trackId } = require('./lib/scanner');
+const { checkOrganization, organizeLibrary, dissolveVariousArtists } = require('./lib/organizer');
 const { Store } = require('./lib/store');
 
 // Portable by design: settings/playlists live next to the app (this folder),
@@ -53,6 +53,27 @@ function guessDefaultLibraryPath() {
   return fs.existsSync(guess) ? guess : null;
 }
 
+/** Moves files, so persisted track ids (playlists, tags, last played) must follow. */
+function remapMovedTracks(moves) {
+  if (!moves.length) return;
+  store.remapTrackIds(new Map(moves.map((m) => [trackId(m.from), trackId(m.to)])));
+}
+
+/** Dissolves legacy "Various Artists" folders in every library root. Returns
+ * the number of files moved. */
+function migrateLegacyFolders(libraryPaths) {
+  const moves = [];
+  for (const root of libraryPaths) {
+    try {
+      moves.push(...dissolveVariousArtists(root));
+    } catch (err) {
+      console.error('Various Artists cleanup failed for', root, err);
+    }
+  }
+  remapMovedTracks(moves);
+  return moves.length;
+}
+
 async function runScan() {
   let settings = store.getSettings();
 
@@ -60,6 +81,8 @@ async function runScan() {
     const guess = guessDefaultLibraryPath();
     if (guess) settings = store.saveSettings({ libraryPaths: [guess] });
   }
+
+  migrateLegacyFolders(settings.libraryPaths);
 
   const { tracks, errors } = await scanLibrary(settings.libraryPaths);
   cachedTracks = withCustomTags(withFileUrls(tracks));
@@ -92,6 +115,8 @@ function loadLibraryCache() {
  * always goes through runScan() directly, regardless of this setting. */
 async function loadForLaunch() {
   const settings = store.getSettings();
+  // A cleanup that moved files invalidates any cached snapshot — rescan instead.
+  if (migrateLegacyFolders(settings.libraryPaths) > 0) return runScan();
   if (settings.autoRescanOnLaunch === false) {
     const cache = loadLibraryCache();
     if (cache && cache.tracks?.length > 0) {
@@ -151,7 +176,9 @@ ipcMain.handle('library:check-organization', async (_evt, folderPath) => {
 });
 
 ipcMain.handle('library:organize', async (_evt, folderPath) => {
-  return organizeLibrary(folderPath);
+  const report = await organizeLibrary(folderPath);
+  remapMovedTracks(report.moved);
+  return report;
 });
 
 ipcMain.handle('library:delete-duplicates', async (_evt, duplicatesDir) => {
@@ -159,6 +186,14 @@ ipcMain.handle('library:delete-duplicates', async (_evt, duplicatesDir) => {
     throw new Error('refusing to delete: not a duplicates folder');
   }
   fs.rmSync(duplicatesDir, { recursive: true, force: true });
+  return { deleted: true };
+});
+
+ipcMain.handle('library:delete-unsupported', async (_evt, unsupportedDir) => {
+  if (path.basename(unsupportedDir) !== 'unsupported') {
+    throw new Error('refusing to delete: not an unsupported folder');
+  }
+  fs.rmSync(unsupportedDir, { recursive: true, force: true });
   return { deleted: true };
 });
 

@@ -1314,13 +1314,27 @@ const FAVOURITES_PLAYLIST_ID = 'favourites';
         Moved to <strong style="color:var(--text);">${escapeHtml(report.unsupportedDir || 'unsupported/')}</strong>
       </p>
       <div class="modal-list unsupported-list">${items}</div>
-      <div class="modal-actions"><button id="unsupported-close">CLOSE</button></div>
+      <p style="font-size:12px;color:var(--text);margin:10px 0 14px;">Delete the unsupported folder and its contents?</p>
+      <div class="modal-actions">
+        <button id="unsupported-close">KEEP</button>
+        <button id="unsupported-delete" class="danger-btn">DELETE</button>
+      </div>
     `;
-    openModal(html, (box) =>
-      box.querySelector('#unsupported-close').addEventListener('click', () => {
-        closeModal();
-        if (onClose) onClose();
-      })
+    openModal(
+      html,
+      (box) => {
+        box.querySelector('#unsupported-close').addEventListener('click', () => {
+          closeModal();
+          if (onClose) onClose();
+        });
+        box.querySelector('#unsupported-delete').addEventListener('click', async () => {
+          closeModal();
+          await window.k7.deleteUnsupportedFolder(report.unsupportedDir);
+          showToast('UNSUPPORTED DELETED');
+          if (onClose) onClose();
+        });
+      },
+      'danger'
     );
   }
 
