@@ -247,9 +247,21 @@ const FAVOURITES_PLAYLIST_ID = 'favourites';
       btn.textContent = '×';
       btn.title = 'Remove folder';
       btn.addEventListener('click', async () => {
-        const result = await window.k7.removeLibraryFolder(p);
-        applyScanData(result);
-        renderCurrentView();
+        btn.disabled = true;
+        el.scanStatus.textContent = 'REMOVING...';
+        el.scanStatus.classList.remove('error');
+        try {
+          const result = await window.k7.removeLibraryFolder(p);
+          if (!result || !Array.isArray(result.tracks)) throw new Error('unexpected response from main process');
+          if ((result.libraryPaths || []).includes(p)) throw new Error('folder still linked after removal');
+          applyScanData(result);
+          renderCurrentView();
+        } catch (err) {
+          console.error(err);
+          btn.disabled = false;
+          el.scanStatus.textContent = `REMOVE FAILED: ${err.message}`.toUpperCase();
+          el.scanStatus.classList.add('error');
+        }
       });
       row.append(label, btn);
       el.libraryPaths.appendChild(row);
@@ -1258,10 +1270,9 @@ const FAVOURITES_PLAYLIST_ID = 'favourites';
     const html = `
       <h3>LIBRARY NOT ORGANISED</h3>
       <p style="font-size:12px;color:var(--text);line-height:1.6;margin:0 0 14px;">
-        ${count} track${count === 1 ? '' : 's'} found loose in this folder, not inside an Artist/Album structure.
-        K7 Audio only scans inside artist folders — loose files would be silently skipped, not shown anywhere.
-        Organise now? Files are only <strong>moved</strong> by tag (Artist/Album), never deleted. Anything it can't
-        confidently place goes to an <strong>unsupported/</strong> folder instead of being left behind or lost.
+        ${count} track${count === 1 ? '' : 's'} found loose in this folder. K7 Audio uses a music library structure.
+        Unsupported files will be moved to 'unsupported' folder.<br>
+        Organise now?
       </p>
       <div class="modal-actions">
         <button id="org-no">ADD AS-IS</button>
@@ -1304,8 +1315,7 @@ const FAVOURITES_PLAYLIST_ID = 'favourites';
     const html = `
       <h3>${report.unsupported.length} FILE${report.unsupported.length === 1 ? '' : 'S'} NEED ATTENTION</h3>
       <p style="font-size:11px;color:var(--text-dim);margin:0 0 10px;line-height:1.5;">
-        Moved to <strong style="color:var(--text);">${escapeHtml(report.unsupportedDir || 'unsupported/')}</strong> —
-        nothing deleted, nothing guessed.
+        Moved to <strong style="color:var(--text);">${escapeHtml(report.unsupportedDir || 'unsupported/')}</strong>
       </p>
       <div class="modal-list unsupported-list">${items}</div>
       <div class="modal-actions"><button id="unsupported-close">CLOSE</button></div>

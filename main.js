@@ -56,7 +56,7 @@ function guessDefaultLibraryPath() {
 async function runScan() {
   let settings = store.getSettings();
 
-  if (settings.libraryPaths.length === 0) {
+  if (settings.libraryPaths.length === 0 && !settings.defaultPathDismissed) {
     const guess = guessDefaultLibraryPath();
     if (guess) settings = store.saveSettings({ libraryPaths: [guess] });
   }
@@ -172,7 +172,10 @@ ipcMain.handle('library:confirm-add-folder', async (_evt, folderPath) => {
 
 ipcMain.handle('library:remove-folder', async (_evt, folderPath) => {
   const settings = store.getSettings();
-  store.saveSettings({ libraryPaths: settings.libraryPaths.filter((p) => p !== folderPath) });
+  store.saveSettings({
+    libraryPaths: settings.libraryPaths.filter((p) => p !== folderPath),
+    defaultPathDismissed: true,
+  });
   return runScan();
 });
 
