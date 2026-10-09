@@ -77,17 +77,10 @@ const FAVOURITES_PLAYLIST_ID = 'favourites';
     return str.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   }
 
-  const PLACEHOLDER_COVER_SVG = `<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
-    <rect width="100" height="100" rx="14" fill="#111318"/>
-    <circle cx="34" cy="46" r="14" fill="none" stroke="#3dff8f" stroke-width="4"/>
-    <circle cx="66" cy="46" r="14" fill="none" stroke="#ff2fb0" stroke-width="4"/>
-    <circle cx="34" cy="46" r="5" fill="#3dff8f"/>
-    <circle cx="66" cy="46" r="5" fill="#ff2fb0"/>
-    <rect x="14" y="72" width="72" height="6" rx="3" fill="#ff2fb0"/>
-  </svg>`;
+  const DEFAULT_COVER_URL = '../assets/k7-cassette.ico';
 
   /** Cover priority: explicit playlist cover -> first track's folder art
-   * (Favourites skips this tier — see resolvePlaylistCover) -> the K7 mark. */
+   * (Favourites skips this tier — see resolvePlaylistCover) -> the app icon. */
   function makeCoverEl(coverUrl, sizeClass) {
     const wrap = document.createElement('div');
     wrap.className = `cover-thumb ${sizeClass}`;
@@ -97,7 +90,10 @@ const FAVOURITES_PLAYLIST_ID = 'favourites';
       img.alt = '';
       wrap.appendChild(img);
     } else {
-      wrap.innerHTML = PLACEHOLDER_COVER_SVG;
+      const img = document.createElement('img');
+      img.src = DEFAULT_COVER_URL;
+      img.alt = '';
+      wrap.appendChild(img);
     }
     return wrap;
   }
